@@ -174,8 +174,8 @@ def run_pipeline(
     run_env.setdefault("METATOX_NATIVE_COMPILE", "true")
     run_env.pop("APPTAINER_BINDPATH", None)
     run_env.pop("SINGULARITY_BINDPATH", None)
-    run_env.setdefault("APPTAINER_NO_MOUNT", "cwd,home,/etc/localtime")
-    run_env.setdefault("SINGULARITY_NO_MOUNT", "cwd,home,/etc/localtime")
+    run_env.setdefault("APPTAINER_NO_MOUNT", "cwd,home,tmp,/etc/localtime")
+    run_env.setdefault("SINGULARITY_NO_MOUNT", "cwd,home,tmp,/etc/localtime")
     run_env.setdefault("APPTAINER_TMPDIR", "/tmp/apptainer")
     run_env.setdefault("SINGULARITY_TMPDIR", "/tmp/apptainer")
 
@@ -199,19 +199,26 @@ def run_pipeline(
         emit(line.rstrip("\n"))
 
     return_code = process.wait()
-    if return_code != 0:
+    compiled = sorted(output_dir.glob("*_CompileResults.tsv"))
+
+    if return_code != 0 and not compiled:
         raise RuntimeError(
             f"MetaTox exited with code {return_code}. Check the log panel and {work_dir / 'log'}."
         )
 
-    if not output_dir.exists():
-        raise RuntimeError(f"MetaTox finished but no output directory was created: {output_dir}")
-
-    if not list(output_dir.glob("*_CompileResults.tsv")):
+    if return_code != 0 and compiled:
+        emit(
+            f"WARNING: MetaTox reported step failures (exit {return_code}) "
+            f"but {len(compiled)} compiled result file(s) were produced."
+        )
+    elif not compiled:
         raise RuntimeError(
             f"MetaTox finished but no compiled results were found in {output_dir}. "
             f"Check {work_dir / 'log'} for step errors."
         )
+
+    if not output_dir.exists():
+        raise RuntimeError(f"MetaTox finished but no output directory was created: {output_dir}")
 
     emit("")
     emit(f"Results saved to: {output_dir}")

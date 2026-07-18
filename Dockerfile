@@ -7,8 +7,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     METATOX_NATIVE_COMPILE=true \
     SINGULARITY_CACHEDIR=/var/lib/metatox/singularity-cache \
     APPTAINER_CACHEDIR=/var/lib/metatox/singularity-cache \
-    APPTAINER_NO_MOUNT=cwd,home,/etc/localtime \
-    SINGULARITY_NO_MOUNT=cwd,home,/etc/localtime \
+    APPTAINER_NO_MOUNT=cwd,home,tmp,/etc/localtime \
+    SINGULARITY_NO_MOUNT=cwd,home,tmp,/etc/localtime \
     APPTAINER_TMPDIR=/tmp/apptainer \
     SINGULARITY_TMPDIR=/tmp/apptainer \
     TMPDIR=/tmp \
@@ -53,7 +53,7 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt -r /tmp/requirements-co
 COPY . /app
 
 RUN find /app -type f -name "*.sh" -print -exec dos2unix {} + \
-    && chmod +x /app/Metatox.sh /app/docker/entrypoint.sh /app/docker/bootstrap.sh /app/web_app/job_worker.py \
+    && chmod +x /app/Metatox.sh /app/docker/entrypoint.sh /app/docker/bootstrap.sh /app/docker/verify-nested-singularity.sh /app/web_app/job_worker.py \
     && mkdir -p /app/data/input /app/data/output /app/data/job /app/log /var/lib/metatox/singularity-cache /tmp/apptainer
 
 EXPOSE 8501

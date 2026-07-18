@@ -4,11 +4,11 @@ set -euo pipefail
 APP_ROOT="${APP_ROOT:-/app}"
 CACHE_DIR="${SINGULARITY_CACHEDIR:-/var/lib/metatox/singularity-cache}"
 
-mkdir -p "${CACHE_DIR}" "${APP_ROOT}/data/input" "${APP_ROOT}/data/output" "${APP_ROOT}/log" /tmp
+mkdir -p "${CACHE_DIR}" "${APP_ROOT}/data/input" "${APP_ROOT}/data/output" "${APP_ROOT}/data/output/Results_Prediction" "${APP_ROOT}/log" /tmp
 export SINGULARITY_CACHEDIR="${CACHE_DIR}"
 export APPTAINER_CACHEDIR="${CACHE_DIR}"
-export APPTAINER_NO_MOUNT="${APPTAINER_NO_MOUNT:-cwd,home,/etc/localtime}"
-export SINGULARITY_NO_MOUNT="${SINGULARITY_NO_MOUNT:-cwd,home,/etc/localtime}"
+export APPTAINER_NO_MOUNT="${APPTAINER_NO_MOUNT:-cwd,home,tmp,/etc/localtime}"
+export SINGULARITY_NO_MOUNT="${SINGULARITY_NO_MOUNT:-cwd,home,tmp,/etc/localtime}"
 export APPTAINER_TMPDIR="${APPTAINER_TMPDIR:-/tmp/apptainer}"
 export SINGULARITY_TMPDIR="${SINGULARITY_TMPDIR:-/tmp/apptainer}"
 export TMPDIR="${TMPDIR:-/tmp}"

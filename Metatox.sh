@@ -217,22 +217,18 @@ work_dir="${PWD}"
 
 # Nested Singularity inside Docker: never mount host /app over container /app.
 unset APPTAINER_BINDPATH SINGULARITY_BINDPATH
-export APPTAINER_NO_MOUNT="${APPTAINER_NO_MOUNT:-cwd,home,/etc/localtime}"
-export SINGULARITY_NO_MOUNT="${SINGULARITY_NO_MOUNT:-cwd,home,/etc/localtime}"
-SINGULARITY_COMMON_ARGS=(--no-mount cwd,home)
+export APPTAINER_NO_MOUNT="${APPTAINER_NO_MOUNT:-cwd,home,tmp,/etc/localtime}"
+export SINGULARITY_NO_MOUNT="${SINGULARITY_NO_MOUNT:-cwd,home,tmp,/etc/localtime}"
+SINGULARITY_COMMON_ARGS=(--no-mount cwd,home,tmp)
 
 tmp="${work_dir}/tmp/"
-if test -d $tmp; then
-  rm -r $tmp
+if test -d "$tmp"; then
+  rm -r "$tmp"
 fi
-mkdir $tmp
+mkdir -p "$tmp"
 
 log="${work_dir}/log/"
-if test -d $log; then
-    :
-else
-    mkdir $log
-fi
+mkdir -p "$log"
 
 DirCondaEnv="${work_dir}/CondaEnv/"
 
@@ -298,12 +294,7 @@ if [ -z $outname ]; then
 fi
 
 DirOutput="${work_dir}/${outname}/"
-
-if test -d $DirOutput; then
-    :
-else
-    mkdir $DirOutput
-fi
+mkdir -p "${DirOutput}"
 
 ###Bio-Transformer options
 #Default Mode
@@ -498,7 +489,7 @@ do
 
     results_file="${DirOutput}${tab_molecule[${indice}]}_CompileResults.tsv"
     results_figure="${DirOutput}${tab_molecule[${indice}]}_figures/"
-    mkdir -p ${results_figure}
+    mkdir -p "${results_figure}"
 
     #########################
     ### BIOTRANSFORMERS 3 ###
@@ -538,7 +529,7 @@ do
 
     sygma_job () {
         set -e
-        singularity run "${SINGULARITY_COMMON_ARGS[@]}" docker://3dechem/sygma ${tab_smiles[${indice}]} \
+        singularity run "${SINGULARITY_COMMON_ARGS[@]}" docker://3dechem/sygma "${tab_smiles[${indice}]}" \
         -1 $phase1 \
         -2 $phase2 \
         >> "${tmp}${tab_molecule[${indice}]}_Sygma.sdf" 2>> "${log}${tab_molecule[${indice}]}_Sygma_log.txt"
@@ -558,7 +549,7 @@ do
         local mol="${tab_molecule[${indice}]}"
         singularity run "${SINGULARITY_COMMON_ARGS[@]}" -B "${tmp}:/tmp" library://abourdais/default/gloryx_api \
         --phase $phase_gloryx \
-        --smile ${tab_smiles[${indice}]} \
+        --smile "${tab_smiles[${indice}]}" \
         --output "/tmp/${mol}_Gloryx.csv" \
         > "${log}${mol}_Gloryx_log.txt" 2>&1
     }
@@ -577,7 +568,7 @@ do
         local mol="${tab_molecule[${indice}]}"
         singularity run "${SINGULARITY_COMMON_ARGS[@]}" --containall -B "${tmp}:/tmp" --writable-tmpfs library://abourdais/default/metatrans \
         -n ${mol} \
-        -s ${tab_smiles[${indice}]} \
+        -s "${tab_smiles[${indice}]}" \
         -r /tmp/${mol}_MetaTrans.csv \
         -l /tmp/${mol}_MetaTrans_log.txt
 
@@ -608,7 +599,11 @@ do
                 --dirfig "${results_figure}" \
                 > "${log}${tab_molecule[${indice}]}_Compagnion_log.txt" 2>&1
         else
-            singularity exec "${SINGULARITY_COMMON_ARGS[@]}" -B "${tmp}:/tmp" -B "${DirScripts}:/scripts" library://abourdais/default/rdkit python /scripts/metatox_compagnion.py \
+            singularity exec "${SINGULARITY_COMMON_ARGS[@]}" \
+                -B "${tmp}:/tmp" \
+                -B "${DirScripts}:/scripts" \
+                -B "${DirOutput}:${DirOutput}" \
+                library://abourdais/default/rdkit python /scripts/metatox_compagnion.py \
                 --biotrans "/tmp/${tab_molecule[${indice}]}_Biotransformer3.csv" \
                 --sygma "/tmp/${tab_molecule[${indice}]}_Sygma.sdf" \
                 --metapred "/tmp/${tab_molecule[${indice}]}_Metapred.csv" \
@@ -620,7 +615,7 @@ do
                 > "${log}${tab_molecule[${indice}]}_Compagnion_log.txt" 2>&1
         fi
 
-        rm ${tmp}${tab_molecule[${indice}]}_ListeSmile.txt
+        rm -f "${tmp}${tab_molecule[${indice}]}_ListeSmile.txt"
     }
 
     if ! run_with_spinner "Compilation ..." compilation_job; then
@@ -643,6 +638,16 @@ Execution completed !
 "
 
 if [ "${step_failures:-0}" -gt 0 ]; then
-    echo "WARNING: ${step_failures} pipeline step(s) failed. Check /app/log for details."
+    compiled_count=0
+    for compiled_file in "${DirOutput}"*_CompileResults.tsv; do
+        if [ -f "${compiled_file}" ]; then
+            compiled_count=$((compiled_count + 1))
+        fi
+    done
+    if [ "${compiled_count}" -gt 0 ]; then
+        echo "WARNING: ${step_failures} pipeline step(s) failed but ${compiled_count} compiled result file(s) were produced."
+        exit 0
+    fi
+    echo "WARNING: ${step_failures} pipeline step(s) failed. Check ${log} for details."
     exit 1
 fi
