@@ -114,6 +114,18 @@ docker run --rm -it \
 - Docker Compose runs the service with `privileged: true` so Apptainer can execute nested containers
 - On hardened hosts, ask your admin to allow privileged containers
 
+### `bash\r: No such file or directory`
+
+This means shell scripts were saved with Windows line endings. Rebuild with the latest image:
+
+```bash
+docker compose down
+docker compose build --no-cache
+docker compose up
+```
+
+The Dockerfile now converts all `*.sh` files to Unix line endings during the build.
+
 ### Predictions are slow the first time
 
 - Expected: Singularity images are downloaded on demand

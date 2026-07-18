@@ -36,7 +36,8 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 
 COPY . /app
 
-RUN chmod +x /app/Metatox.sh /app/docker/entrypoint.sh /app/docker/bootstrap.sh \
+RUN find /app -type f -name "*.sh" -print -exec dos2unix {} + \
+    && chmod +x /app/Metatox.sh /app/docker/entrypoint.sh /app/docker/bootstrap.sh \
     && mkdir -p /app/data/input /app/data/output /app/log /var/lib/metatox/singularity-cache
 
 EXPOSE 8501
@@ -46,4 +47,4 @@ VOLUME ["/app/data/input", "/app/Results_Prediction", "/var/lib/metatox/singular
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD curl -fsS "http://127.0.0.1:${METATOX_PORT}/_stcore/health" || exit 1
 
-ENTRYPOINT ["/app/docker/entrypoint.sh"]
+ENTRYPOINT ["/bin/bash", "/app/docker/entrypoint.sh"]

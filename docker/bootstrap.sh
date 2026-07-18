@@ -8,6 +8,10 @@ mkdir -p "${CACHE_DIR}" "${APP_ROOT}/data/input" "${APP_ROOT}/data/output" "${AP
 export SINGULARITY_CACHEDIR="${CACHE_DIR}"
 export APPTAINER_CACHEDIR="${CACHE_DIR}"
 
+if command -v dos2unix >/dev/null 2>&1; then
+  find "${APP_ROOT}" -type f -name "*.sh" -exec dos2unix -q {} + 2>/dev/null || true
+fi
+
 if command -v apptainer >/dev/null 2>&1 && ! command -v singularity >/dev/null 2>&1; then
   ln -sf "$(command -v apptainer)" /usr/local/bin/singularity
 fi
