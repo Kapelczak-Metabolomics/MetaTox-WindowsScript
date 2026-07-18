@@ -15,6 +15,7 @@ from pipeline import (
     run_pipeline,
     sanitize_filename,
     summarize_outputs,
+    validate_input_file,
     zip_output_directory,
 )
 
@@ -76,9 +77,23 @@ def _environment_payload() -> Dict[str, Any]:
     }
 
 
+def _save_pasted_input(text: str) -> Path:
+    cleaned = text.strip()
+    if not cleaned:
+        raise ValueError("Paste at least one molecule line or upload a file.")
+
+    input_dir = get_work_dir() / "data" / "input"
+    input_dir.mkdir(parents=True, exist_ok=True)
+    destination = input_dir / "pasted_input.txt"
+    destination.write_text(cleaned + "\n", encoding="utf-8")
+    validate_input_file(destination)
+    return destination
+
+
 def _resolve_input_path(form) -> Path:
     use_example = form.get("use_example") == "true"
     example_file = get_work_dir() / "ExempleInput.txt"
+    pasted_text = (form.get("input_text") or "").strip()
 
     if "input_file" in request.files:
         upload = request.files["input_file"]
@@ -89,10 +104,13 @@ def _resolve_input_path(form) -> Path:
             upload.save(destination)
             return destination
 
+    if pasted_text:
+        return _save_pasted_input(pasted_text)
+
     if use_example and example_file.is_file():
         return example_file
 
-    raise ValueError("Upload an input file or enable the bundled example.")
+    raise ValueError("Upload a file, paste molecule lines directly, or enable the bundled example.")
 
 
 def _build_options(form, input_path: Path) -> PipelineOptions:

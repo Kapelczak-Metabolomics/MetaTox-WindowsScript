@@ -5,6 +5,10 @@ const runStatus = document.getElementById("run-status");
 const alertBox = document.getElementById("alert-box");
 const optionsForm = document.getElementById("options-form");
 const inputFile = document.getElementById("input_file");
+const inputText = document.getElementById("input_text");
+const inputUploadPanel = document.getElementById("input-upload-panel");
+const inputPastePanel = document.getElementById("input-paste-panel");
+const inputModeTabs = document.querySelectorAll(".input-mode-tab");
 const resultsEmpty = document.getElementById("results-empty");
 const resultsContent = document.getElementById("results-content");
 const resultsSummary = document.getElementById("results-summary");
@@ -12,6 +16,21 @@ const refreshEnvButton = document.getElementById("refresh-env");
 const envBadge = document.getElementById("env-badge");
 
 let pollTimer = null;
+let activeInputMode = "upload";
+
+function setInputMode(mode) {
+  activeInputMode = mode;
+  inputUploadPanel.classList.toggle("hidden", mode !== "upload");
+  inputPastePanel.classList.toggle("hidden", mode !== "paste");
+
+  inputModeTabs.forEach((tab) => {
+    const selected = tab.dataset.inputMode === mode;
+    tab.classList.toggle("border-brand-600", selected);
+    tab.classList.toggle("text-brand-600", selected);
+    tab.classList.toggle("border-transparent", !selected);
+    tab.classList.toggle("text-slate-500", !selected);
+  });
+}
 
 function showAlert(message, type = "error") {
   alertBox.textContent = message;
@@ -77,8 +96,10 @@ async function startRun() {
   hideAlert();
 
   const formData = new FormData(optionsForm);
-  if (inputFile.files.length > 0) {
+  if (activeInputMode === "upload" && inputFile.files.length > 0) {
     formData.append("input_file", inputFile.files[0]);
+  } else if (activeInputMode === "paste") {
+    formData.set("input_text", inputText.value.trim());
   }
 
   const useExample = document.getElementById("use_example");
@@ -137,6 +158,10 @@ async function refreshEnvironment() {
 runButton.addEventListener("click", startRun);
 cancelButton.addEventListener("click", cancelRun);
 refreshEnvButton.addEventListener("click", refreshEnvironment);
+inputModeTabs.forEach((tab) => {
+  tab.addEventListener("click", () => setInputMode(tab.dataset.inputMode));
+});
+setInputMode("upload");
 
 fetch("/api/job")
   .then((response) => response.json())

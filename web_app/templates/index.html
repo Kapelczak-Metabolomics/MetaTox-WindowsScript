@@ -102,9 +102,38 @@
       <div id="metatox-tab-content" class="p-6">
         <div id="run-panel" role="tabpanel">
           <div class="mb-6">
-            <label class="mb-2 block text-sm font-medium text-slate-700" for="input_file">Input file</label>
-            <input id="input_file" name="input_file" type="file" accept=".txt,.csv" class="block w-full cursor-pointer rounded-lg border border-slate-300 bg-slate-50 text-sm text-slate-900 focus:outline-none">
-            <p class="mt-2 text-sm text-slate-500">Example: <code>Nicotine,CN1CCC[C@H]1c2cccnc2</code></p>
+            <div class="mb-4 border-b border-slate-200">
+              <ul class="flex flex-wrap -mb-px text-sm font-medium text-center" id="input-method-tabs">
+                <li class="me-2">
+                  <button type="button" data-input-mode="upload" class="input-mode-tab inline-block rounded-t-lg border-b-2 border-brand-600 p-4 text-brand-600 active">
+                    Upload file
+                  </button>
+                </li>
+                <li>
+                  <button type="button" data-input-mode="paste" class="input-mode-tab inline-block rounded-t-lg border-b-2 border-transparent p-4 hover:border-slate-300 hover:text-slate-600">
+                    Paste directly
+                  </button>
+                </li>
+              </ul>
+            </div>
+
+            <div id="input-upload-panel">
+              <label class="mb-2 block text-sm font-medium text-slate-700" for="input_file">Input file</label>
+              <input id="input_file" name="input_file" type="file" accept=".txt,.csv" class="block w-full cursor-pointer rounded-lg border border-slate-300 bg-slate-50 text-sm text-slate-900 focus:outline-none">
+              <p class="mt-2 text-sm text-slate-500">One molecule per line: <code>MoleculeName,SMILES</code></p>
+            </div>
+
+            <div id="input-paste-panel" class="hidden">
+              <label class="mb-2 block text-sm font-medium text-slate-700" for="input_text">Molecule list</label>
+              <textarea
+                id="input_text"
+                name="input_text"
+                rows="8"
+                placeholder="Nicotine,CN1CCC[C@H]1c2cccnc2&#10;Aspirin,CC(=O)Oc1ccccc1C(=O)O"
+                class="block w-full rounded-lg border border-slate-300 bg-slate-50 p-3 text-sm text-slate-900 focus:border-brand-500 focus:ring-brand-500"
+              ></textarea>
+              <p class="mt-2 text-sm text-slate-500">Enter one molecule per line as <code>MoleculeName,SMILES</code>.</p>
+            </div>
           </div>
 
           <div id="alert-box" class="mb-4 hidden rounded-lg p-4 text-sm" role="alert"></div>
