@@ -1,5 +1,7 @@
 const runButton = document.getElementById("run-button");
 const cancelButton = document.getElementById("cancel-button");
+const clearSessionButton = document.getElementById("clear-session-button");
+const clearSessionResultsButton = document.getElementById("clear-session-results-button");
 const logOutput = document.getElementById("log-output");
 const runStatus = document.getElementById("run-status");
 const alertBox = document.getElementById("alert-box");
@@ -72,6 +74,13 @@ function setRunning(running) {
   runButton.disabled = running;
   cancelButton.disabled = !running;
   runStatus.textContent = running ? "Running..." : "Idle";
+  if (running) {
+    [clearSessionButton, clearSessionResultsButton].forEach((button) => {
+      if (button) {
+        button.classList.add("hidden");
+      }
+    });
+  }
 }
 
 function updateLogs(logs) {
@@ -81,6 +90,49 @@ function updateLogs(logs) {
   }
   logOutput.textContent = logs.join("\n");
   logOutput.scrollTop = logOutput.scrollHeight;
+}
+
+function updateSessionActions(data) {
+  const canClear =
+    !data.running &&
+    (Boolean(data.output_dir) || Boolean(data.error) || Boolean(data.logs && data.logs.length > 0));
+
+  [clearSessionButton, clearSessionResultsButton].forEach((button) => {
+    if (!button) {
+      return;
+    }
+    button.classList.toggle("hidden", !canClear);
+  });
+}
+
+function resetUiForNewQuery() {
+  hideAlert();
+  updateLogs([]);
+  setRunning(false);
+
+  resultsEmpty.classList.remove("hidden");
+  resultsContent.classList.add("hidden");
+  resultsSummary.textContent = "";
+  downloadLink.classList.add("hidden");
+  elmavenDownloadLink.classList.add("hidden");
+
+  viewerData = null;
+  currentOutputDir = null;
+  viewerSourceLabel = "";
+  variantSelections = {};
+  showViewerState(false);
+  viewerList.innerHTML = "";
+  viewerCount.textContent = "";
+  if (viewerResultSet) {
+    viewerResultSet.innerHTML = "";
+  }
+  if (viewerZipStatus) {
+    viewerZipStatus.textContent = "";
+  }
+
+  inputFile.value = "";
+  inputText.value = "";
+  updateSessionActions({ running: false, logs: [] });
 }
 
 function updateResults(data) {
@@ -104,6 +156,7 @@ function updateResults(data) {
     viewerSourceLabel = "";
     loadViewerData(data.output_dir);
   }
+  updateSessionActions(data);
 }
 
 function escapeHtml(value) {
@@ -590,6 +643,28 @@ async function startRun() {
   }
 }
 
+async function clearSession() {
+  if (
+    !window.confirm(
+      "Clear the current logs and saved results? Download anything you need first, then you can start a new query."
+    )
+  ) {
+    return;
+  }
+
+  try {
+    const response = await fetch("/api/clear", { method: "POST" });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "Failed to clear the current session.");
+    }
+    resetUiForNewQuery();
+    showAlert("Session cleared. You can start a new query.", "success");
+  } catch (error) {
+    showAlert(error.message, "error");
+  }
+}
+
 async function cancelRun() {
   try {
     await fetch("/api/cancel", { method: "POST" });
@@ -633,6 +708,12 @@ if (viewerZipUploadActive && viewerZipInputActive) {
 
 runButton.addEventListener("click", startRun);
 cancelButton.addEventListener("click", cancelRun);
+if (clearSessionButton) {
+  clearSessionButton.addEventListener("click", clearSession);
+}
+if (clearSessionResultsButton) {
+  clearSessionResultsButton.addEventListener("click", clearSession);
+}
 refreshEnvButton.addEventListener("click", refreshEnvironment);
 inputModeTabs.forEach((tab) => {
   tab.addEventListener("click", () => setInputMode(tab.dataset.inputMode));
@@ -644,6 +725,7 @@ fetch("/api/job")
   .then((data) => {
     updateLogs(data.logs);
     updateResults(data);
+    updateSessionActions(data);
     if (data.running) {
       pollJobStatus();
     } else if (data.output_dir) {

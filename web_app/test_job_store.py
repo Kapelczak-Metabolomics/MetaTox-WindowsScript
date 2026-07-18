@@ -2,7 +2,9 @@
 
 from pathlib import Path
 
-from job_store import JobStore, options_from_dict, options_to_dict
+import pytest
+
+from job_store import JobClearError, JobStore, options_from_dict, options_to_dict
 from pipeline import PipelineOptions
 
 
@@ -34,3 +36,38 @@ def test_options_serialization(tmp_path: Path):
     restored = options_from_dict(options_to_dict(options))
     assert restored.outdir == options.outdir
     assert str(restored.input_file) == str(options.input_file)
+
+
+def test_clear_session_resets_state_and_deletes_output(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("APP_ROOT", str(tmp_path))
+    store = JobStore()
+    output_dir = tmp_path / "data" / "output" / "Results_Prediction"
+    output_dir.mkdir(parents=True)
+    (output_dir / "Drug_CompileResults.tsv").write_text("test\n", encoding="utf-8")
+    zip_path = output_dir / "MetaTox_results.zip"
+    zip_path.write_text("zip", encoding="utf-8")
+
+    store.update_state(
+        running=False,
+        output_dir=str(output_dir),
+        zip_path=str(zip_path),
+        zip_ready=True,
+        zip_name=zip_path.name,
+        summary="Done",
+    )
+    store.append_log("Finished")
+
+    cleared = store.clear_session()
+    assert cleared.running is False
+    assert cleared.output_dir is None
+    assert store.read_logs() == []
+    assert not output_dir.exists()
+
+
+def test_clear_session_rejects_running_job(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("APP_ROOT", str(tmp_path))
+    store = JobStore()
+    store.update_state(running=True)
+
+    with pytest.raises(JobClearError, match="running"):
+        store.clear_session()

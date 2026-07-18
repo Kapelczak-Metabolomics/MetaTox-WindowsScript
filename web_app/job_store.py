@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import threading
 import time
 from dataclasses import asdict, dataclass
@@ -11,6 +12,10 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
 from pipeline import PipelineOptions, get_work_dir
+
+
+class JobClearError(RuntimeError):
+    """Raised when the current session cannot be cleared."""
 
 
 @dataclass
@@ -145,6 +150,54 @@ class JobStore:
             **snapshot.to_dict(),
             "logs": self.read_logs(),
         }
+
+    def clear_session(self, work_dir: Optional[Path] = None) -> JobSnapshot:
+        root = work_dir or get_work_dir()
+        output_dir: Optional[Path] = None
+        zip_path: Optional[Path] = None
+
+        with self._lock:
+            snapshot = self._read_state_unlocked()
+            if snapshot.running:
+                raise JobClearError("Cannot clear session while a prediction is running.")
+            if self.request_path.is_file():
+                raise JobClearError("Cannot clear session while a prediction is starting.")
+
+            if snapshot.output_dir:
+                output_dir = Path(snapshot.output_dir)
+            if snapshot.zip_path:
+                zip_path = Path(snapshot.zip_path)
+
+            self.log_path.write_text("", encoding="utf-8")
+            self.cancel_path.unlink(missing_ok=True)
+            self.request_path.unlink(missing_ok=True)
+            self._write_state_unlocked(JobSnapshot())
+
+        if output_dir is not None:
+            _safe_delete_path(output_dir, root)
+        elif zip_path is not None:
+            _safe_delete_path(zip_path, root)
+
+        return JobSnapshot()
+
+
+def _allowed_output_roots(work_dir: Path) -> list[Path]:
+    return [(work_dir / "data" / "output").resolve()]
+
+
+def _safe_delete_path(path: Path, work_dir: Path) -> None:
+    if not path.exists():
+        return
+
+    resolved = path.resolve()
+    allowed = _allowed_output_roots(work_dir)
+    if not any(root == resolved or root in resolved.parents for root in allowed):
+        return
+
+    if resolved.is_dir():
+        shutil.rmtree(resolved, ignore_errors=True)
+    else:
+        resolved.unlink(missing_ok=True)
 
 
 class JobCancelMonitor:

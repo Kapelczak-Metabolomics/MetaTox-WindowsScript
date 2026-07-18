@@ -8,7 +8,7 @@ from pathlib import Path
 
 from flask import Flask, abort, jsonify, render_template, request, send_file
 
-from job_store import JobStore
+from job_store import JobClearError, JobStore
 from pipeline import (
     PipelineOptions,
     check_environment,
@@ -182,6 +182,22 @@ def cancel_run():
         return jsonify({"status": "idle"})
     get_job_store().request_cancel()
     return jsonify({"status": "cancelling"})
+
+
+@app.post("/api/clear")
+def clear_session():
+    snapshot = get_job_store().read_state()
+    if snapshot.running:
+        return jsonify({"error": "Cannot clear session while a prediction is running."}), 409
+    if get_job_store().request_path.is_file():
+        return jsonify({"error": "Cannot clear session while a prediction is starting."}), 409
+
+    try:
+        get_job_store().clear_session()
+    except JobClearError as exc:
+        return jsonify({"error": str(exc)}), 409
+
+    return jsonify({"status": "cleared"})
 
 
 @app.get("/api/download")
