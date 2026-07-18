@@ -6,7 +6,7 @@ import csv
 import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from chemistry_utils import (
     is_missing_iupac,
