@@ -18,6 +18,13 @@ As this project was designed for non-bioinformaticians, a **graphical interface 
 
 This project has been tested and run on **linux** and **windows-WSL2**.
 
+### Windows desktop app
+
+A native Windows GUI is available in [`windows_app/`](windows_app/). It packages as `MetaToxGUI.exe` and runs the same pipeline through WSL2.
+
+- Build guide: [`windows_app/README_WINDOWS.md`](windows_app/README_WINDOWS.md)
+- Quick build on Windows: `windows_app\build.bat`
+
 Due to hardware limitations, **Meta-Predictor** (which requires **cuda drivers**) may not function correctly. Its use is therefore disabled by default.
 You can try running it and seeing the error logs to solve potential problems.
 
