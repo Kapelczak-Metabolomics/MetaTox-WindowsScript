@@ -45,6 +45,6 @@ EXPOSE 8501
 VOLUME ["/app/data/input", "/app/Results_Prediction", "/var/lib/metatox/singularity-cache"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD curl -fsS "http://127.0.0.1:${METATOX_PORT}/_stcore/health" || exit 1
+    CMD curl -fsS "http://127.0.0.1:${METATOX_PORT}/api/health" || exit 1
 
 ENTRYPOINT ["/bin/bash", "/app/docker/entrypoint.sh"]

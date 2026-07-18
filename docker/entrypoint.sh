@@ -6,8 +6,10 @@ cd "${APP_ROOT}"
 
 "${APP_ROOT}/docker/bootstrap.sh"
 
-exec streamlit run "${APP_ROOT}/web_app/app.py" \
-  --server.port="${METATOX_PORT:-8501}" \
-  --server.address=0.0.0.0 \
-  --server.headless=true \
-  --browser.gatherUsageStats=false
+exec gunicorn \
+  --chdir "${APP_ROOT}/web_app" \
+  --bind "0.0.0.0:${METATOX_PORT:-8501}" \
+  --workers 1 \
+  --threads 4 \
+  --timeout 3600 \
+  app:app

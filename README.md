@@ -26,7 +26,7 @@ Run MetaTox with a browser-based GUI and bundled dependencies:
 docker compose up --build
 ```
 
-Open `http://localhost:8501`, upload your input file, and download results from the web UI.
+Open `http://localhost:8501`, upload your input file, and download results from the web UI (Tailwind CSS + Flowbite interface).
 
 - Setup guide: [`docker/README.md`](docker/README.md)
 - Outputs are saved to `data/output/`

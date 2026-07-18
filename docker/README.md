@@ -4,7 +4,7 @@ Run MetaTox as a self-contained Docker service with a browser-based GUI. No WSL,
 
 ## What you get
 
-- **Web GUI** at `http://localhost:8501`
+- **Web GUI** at `http://localhost:8501` (Flask + Tailwind CSS + Flowbite)
 - **Bundled dependencies** inside the container (Apptainer/Singularity, Python, pipeline scripts)
 - **Persistent outputs** in `./data/output`
 - **One-command deploy** with Docker Compose
@@ -139,7 +139,7 @@ The Dockerfile now converts all `*.sh` files to Unix line endings during the bui
 ## Architecture
 
 ```text
-Browser -> Streamlit GUI (web_app/app.py)
+Browser -> Flask web UI (Tailwind CSS + Flowbite)
                 |
                 v
          Metatox.sh pipeline

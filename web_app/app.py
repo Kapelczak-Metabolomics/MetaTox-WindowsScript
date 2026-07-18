@@ -1,15 +1,14 @@
-"""MetaTox browser-based GUI."""
+"""MetaTox Flask web application with Tailwind CSS and Flowbite."""
 
 from __future__ import annotations
 
 import threading
-import time
 from pathlib import Path
+from typing import Any, Dict
 
-import streamlit as st
+from flask import Flask, jsonify, render_template, request, send_file
 
 from pipeline import (
-    EnvironmentStatus,
     PipelineOptions,
     check_environment,
     get_work_dir,
@@ -36,216 +35,189 @@ GLORYX_OPTIONS = {
     "phase_2": "Phase 2 only",
 }
 
+app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 
-def init_state() -> None:
-    defaults = {
-        "logs": [],
-        "is_running": False,
-        "cancel_event": None,
-        "last_output_dir": None,
-        "last_zip": None,
-    }
-    for key, value in defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = value
-
-
-def append_log(message: str) -> None:
-    st.session_state.logs.append(message)
+_job_lock = threading.Lock()
+_cancel_event = threading.Event()
+_job_state: Dict[str, Any] = {
+    "running": False,
+    "logs": [],
+    "output_dir": None,
+    "zip_name": None,
+    "summary": None,
+    "error": None,
+}
 
 
-def render_environment(status: EnvironmentStatus) -> None:
-    st.subheader("Environment")
-    cols = st.columns(3)
-    cols[0].metric("Singularity/Apptainer", "Ready" if status.singularity_available else "Missing")
-    cols[1].metric("Metatox.sh", "Found" if status.metatox_script_found else "Missing")
-    cols[2].metric("Work directory", str(status.work_dir))
-
-    for note in status.notes:
-        st.info(note)
-    for issue in status.issues:
-        st.error(issue)
+def _reset_job_state() -> None:
+    _job_state["running"] = False
+    _job_state["logs"] = []
+    _job_state["output_dir"] = None
+    _job_state["zip_name"] = None
+    _job_state["summary"] = None
+    _job_state["error"] = None
 
 
-def save_uploaded_file(upload) -> Path:
-    input_dir = get_work_dir() / "data" / "input"
-    input_dir.mkdir(parents=True, exist_ok=True)
-    destination = input_dir / sanitize_filename(upload.name)
-    destination.write_bytes(upload.getbuffer())
-    return destination
+def _append_log(message: str) -> None:
+    with _job_lock:
+        _job_state["logs"].append(message)
 
 
-def start_pipeline(options: PipelineOptions) -> None:
-    st.session_state.is_running = True
-    st.session_state.logs = []
-    st.session_state.last_output_dir = None
-    st.session_state.last_zip = None
-    st.session_state.cancel_event = threading.Event()
-
-    def worker() -> None:
-        try:
-            output_dir = run_pipeline(
-                options,
-                log_callback=append_log,
-                cancel_event=st.session_state.cancel_event,
-            )
-            st.session_state.last_output_dir = output_dir
-            zip_path = output_dir.parent / f"{output_dir.name}.zip"
-            st.session_state.last_zip = zip_output_directory(output_dir, zip_path)
-        except Exception as exc:  # noqa: BLE001
-            append_log("")
-            append_log(f"ERROR: {exc}")
-        finally:
-            st.session_state.is_running = False
-
-    thread = threading.Thread(target=worker, daemon=True)
-    thread.start()
-
-
-def main() -> None:
-    st.set_page_config(
-        page_title="MetaTox",
-        page_icon="🧪",
-        layout="wide",
-        initial_sidebar_state="expanded",
-    )
-
-    init_state()
+def _environment_payload() -> Dict[str, Any]:
     status = check_environment()
+    return {
+        "singularity_available": status.singularity_available,
+        "metatox_script_found": status.metatox_script_found,
+        "work_dir": str(status.work_dir),
+        "issues": status.issues,
+        "notes": status.notes,
+        "ready": not status.issues,
+    }
 
-    st.title("MetaTox")
-    st.caption(
-        "In silico metabolite prediction with BioTransformer3, SygMa, GLORYx, MetaTrans, "
-        "and optional Meta-Predictor."
+
+def _resolve_input_path(form) -> Path:
+    use_example = form.get("use_example") == "true"
+    example_file = get_work_dir() / "ExempleInput.txt"
+
+    if "input_file" in request.files:
+        upload = request.files["input_file"]
+        if upload and upload.filename:
+            input_dir = get_work_dir() / "data" / "input"
+            input_dir.mkdir(parents=True, exist_ok=True)
+            destination = input_dir / sanitize_filename(upload.filename)
+            upload.save(destination)
+            return destination
+
+    if use_example and example_file.is_file():
+        return example_file
+
+    raise ValueError("Upload an input file or enable the bundled example.")
+
+
+def _build_options(form, input_path: Path) -> PipelineOptions:
+    return PipelineOptions(
+        input_file=input_path,
+        outdir=(form.get("outdir") or "Results_Prediction").strip(),
+        biotrans_type=form.get("biotrans_type") or "allHuman",
+        nstep=int(form.get("nstep") or 1),
+        cmode=int(form.get("cmode") or 3),
+        phase1=int(form.get("phase1") or 1),
+        phase2=int(form.get("phase2") or 1),
+        phase_gloryx=form.get("phase_gloryx") or "phase_1_and_2",
+        predictor_activate=form.get("predictor_activate") == "true",
+        keep_tmp=form.get("keep_tmp") == "true",
     )
 
-    with st.sidebar:
-        st.header("Prediction options")
-        biotrans_type = st.selectbox(
-            "BioTransformer model",
-            options=list(BIOTRANS_OPTIONS.keys()),
-            format_func=lambda key: f"{key} — {BIOTRANS_OPTIONS[key]}",
+
+def _run_job(options: PipelineOptions) -> None:
+    try:
+        output_dir = run_pipeline(
+            options,
+            log_callback=_append_log,
+            cancel_event=_cancel_event,
         )
-        nstep = st.number_input("BioTransformer steps", min_value=1, max_value=10, value=1)
-        cmode = st.selectbox(
-            "BioTransformer CYP450 mode",
-            options=[1, 2, 3],
-            index=2,
-            help="1 = CypReact + rules, 2 = CyProduct only, 3 = combined",
+        zip_path = output_dir.parent / f"{output_dir.name}.zip"
+        zip_output_directory(output_dir, zip_path)
+        with _job_lock:
+            _job_state["output_dir"] = str(output_dir)
+            _job_state["zip_name"] = zip_path.name
+            _job_state["summary"] = summarize_outputs(output_dir)
+    except Exception as exc:  # noqa: BLE001
+        _append_log("")
+        _append_log(f"ERROR: {exc}")
+        with _job_lock:
+            _job_state["error"] = str(exc)
+    finally:
+        with _job_lock:
+            _job_state["running"] = False
+
+
+@app.get("/")
+def index():
+    env = _environment_payload()
+    example_available = (get_work_dir() / "ExempleInput.txt").is_file()
+    return render_template(
+        "index.html",
+        biotrans_options=BIOTRANS_OPTIONS,
+        gloryx_options=GLORYX_OPTIONS,
+        env_status=env,
+        example_available=example_available,
+    )
+
+
+@app.get("/api/health")
+def health():
+    return jsonify({"status": "ok"})
+
+
+@app.get("/api/environment")
+def environment():
+    return jsonify(_environment_payload())
+
+
+@app.get("/api/job")
+def job_status():
+    with _job_lock:
+        return jsonify(
+            {
+                "running": _job_state["running"],
+                "logs": list(_job_state["logs"]),
+                "output_dir": _job_state["output_dir"],
+                "zip_name": _job_state["zip_name"],
+                "summary": _job_state["summary"],
+                "error": _job_state["error"],
+            }
         )
-        phase1 = st.number_input("SygMa phase 1 cycles", min_value=1, max_value=10, value=1)
-        phase2 = st.number_input("SygMa phase 2 cycles", min_value=1, max_value=10, value=1)
-        phase_gloryx = st.selectbox(
-            "GLORYx metabolism phase",
-            options=list(GLORYX_OPTIONS.keys()),
-            format_func=lambda key: GLORYX_OPTIONS[key],
-        )
-        outdir = st.text_input("Output folder name", value="Results_Prediction")
-        predictor_activate = st.checkbox(
-            "Enable Meta-Predictor",
-            value=False,
-            help="Requires CUDA and the Meta-Predictor repository inside the container.",
-        )
-        keep_tmp = st.checkbox("Keep intermediate files", value=False)
 
-    tab_run, tab_results, tab_environment = st.tabs(["Run", "Results", "Environment"])
 
-    with tab_run:
-        st.subheader("Input")
-        st.markdown(
-            "Upload a text file with one molecule per line: `MoleculeName,SMILES`  \n"
-            "Example: `Nicotine,CN1CCC[C@H]1c2cccnc2`"
-        )
+@app.post("/api/run")
+def start_run():
+    with _job_lock:
+        if _job_state["running"]:
+            return jsonify({"error": "A prediction is already running."}), 409
 
-        uploaded = st.file_uploader("Input file", type=["txt", "csv"])
-        example_file = get_work_dir() / "ExempleInput.txt"
-        use_example = False
-        if example_file.is_file():
-            use_example = st.checkbox("Use bundled example input", value=False)
+    env = check_environment()
+    if env.issues:
+        return jsonify({"error": "\n".join(env.issues)}), 400
 
-        col_run, col_cancel = st.columns([1, 1])
-        run_clicked = col_run.button("Run prediction", type="primary", disabled=st.session_state.is_running)
-        cancel_clicked = col_cancel.button("Cancel", disabled=not st.session_state.is_running)
+    try:
+        input_path = _resolve_input_path(request.form)
+        options = _build_options(request.form, input_path)
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": str(exc)}), 400
 
-        if cancel_clicked and st.session_state.cancel_event is not None:
-            st.session_state.cancel_event.set()
-            st.warning("Cancellation requested. Waiting for the current step to stop...")
+    _cancel_event.clear()
+    with _job_lock:
+        _reset_job_state()
+        _job_state["running"] = True
 
-        if run_clicked:
-            if status.issues:
-                st.error("Environment is not ready. Check the Environment tab.")
-            else:
-                try:
-                    if uploaded is not None:
-                        input_path = save_uploaded_file(uploaded)
-                    elif use_example:
-                        input_path = example_file
-                    else:
-                        raise ValueError("Upload an input file or enable the bundled example.")
+    worker = threading.Thread(target=_run_job, args=(options,), daemon=True)
+    worker.start()
+    return jsonify({"status": "started"})
 
-                    options = PipelineOptions(
-                        input_file=input_path,
-                        outdir=outdir.strip() or "Results_Prediction",
-                        biotrans_type=biotrans_type,
-                        nstep=int(nstep),
-                        cmode=int(cmode),
-                        phase1=int(phase1),
-                        phase2=int(phase2),
-                        phase_gloryx=phase_gloryx,
-                        predictor_activate=predictor_activate,
-                        keep_tmp=keep_tmp,
-                    )
-                    start_pipeline(options)
-                    st.success("Prediction started.")
-                except Exception as exc:  # noqa: BLE001
-                    st.error(str(exc))
 
-        st.subheader("Log")
-        log_text = "\n".join(st.session_state.logs) if st.session_state.logs else "No output yet."
-        st.text_area("Pipeline output", value=log_text, height=360)
+@app.post("/api/cancel")
+def cancel_run():
+    if not _job_state["running"]:
+        return jsonify({"status": "idle"})
+    _cancel_event.set()
+    return jsonify({"status": "cancelling"})
 
-        if st.session_state.is_running:
-            time.sleep(1.0)
-            st.rerun()
 
-    with tab_results:
-        output_dir = st.session_state.last_output_dir
-        if output_dir and Path(output_dir).exists():
-            st.success(summarize_outputs(Path(output_dir)))
-            zip_path = st.session_state.last_zip
-            if zip_path and Path(zip_path).is_file():
-                st.download_button(
-                    label="Download results (.zip)",
-                    data=Path(zip_path).read_bytes(),
-                    file_name=Path(zip_path).name,
-                    mime="application/zip",
-                )
-        else:
-            st.info("Run a prediction to generate downloadable results.")
+@app.get("/api/download")
+def download_results():
+    zip_name = _job_state.get("zip_name")
+    output_dir = _job_state.get("output_dir")
+    if not zip_name or not output_dir:
+        return jsonify({"error": "No results available yet."}), 404
 
-    with tab_environment:
-        render_environment(status)
-        st.markdown(
-            """
-            ### Container deployment
+    zip_path = Path(output_dir).parent / zip_name
+    if not zip_path.is_file():
+        return jsonify({"error": "Results archive not found."}), 404
 
-            This interface runs inside Docker and executes the original `Metatox.sh` pipeline
-            with Singularity/Apptainer.
-
-            **Quick start**
-
-            ```bash
-            docker compose up --build
-            ```
-
-            Then open [http://localhost:8501](http://localhost:8501).
-
-            The first run may take longer while Singularity images are downloaded.
-            """
-        )
-        if st.button("Refresh environment checks"):
-            st.rerun()
+    return send_file(zip_path, as_attachment=True, download_name=zip_name)
 
 
 if __name__ == "__main__":
-    main()
+    app.run(host="0.0.0.0", port=8501, debug=True)
