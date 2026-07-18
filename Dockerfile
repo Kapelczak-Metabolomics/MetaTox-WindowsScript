@@ -41,7 +41,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     uidmap \
     wget \
     && ln -sf /usr/share/zoneinfo/UTC /etc/localtime \
-    && python3 -m pip install --upgrade pip \
     && rm -rf /var/lib/apt/lists/*
 
 ARG APPTAINER_VERSION=1.3.6
