@@ -29,6 +29,7 @@ docker compose up --build
 Open `http://localhost:8501`, upload your input file, and download results from the web UI (Tailwind CSS + Flowbite interface).
 
 - Setup guide: [`docker/README.md`](docker/README.md)
+- **macOS (Apple Silicon):** use `docker compose -f docker-compose.yml -f docker-compose.mac.yml up --build` for the most compatible build
 - Outputs are saved to `data/output/`
 
 ### Windows desktop app (alternative)

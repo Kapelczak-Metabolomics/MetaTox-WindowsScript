@@ -43,13 +43,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && ln -sf /usr/share/zoneinfo/UTC /etc/localtime \
     && rm -rf /var/lib/apt/lists/*
 
+ARG TARGETARCH
 ARG APPTAINER_VERSION=1.3.6
-RUN wget -q "https://github.com/apptainer/apptainer/releases/download/v${APPTAINER_VERSION}/apptainer_${APPTAINER_VERSION}_amd64.deb" \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends ./apptainer_${APPTAINER_VERSION}_amd64.deb \
-    && rm -f "apptainer_${APPTAINER_VERSION}_amd64.deb" \
-    && rm -rf /var/lib/apt/lists/* \
-    && ln -sf /usr/bin/apptainer /usr/local/bin/singularity
+COPY docker/install-apptainer.sh /tmp/install-apptainer.sh
+RUN chmod +x /tmp/install-apptainer.sh \
+    && TARGETARCH="${TARGETARCH}" APPTAINER_VERSION="${APPTAINER_VERSION}" /tmp/install-apptainer.sh \
+    && rm -f /tmp/install-apptainer.sh
 
 COPY web_app/requirements.txt /tmp/requirements.txt
 COPY docker/requirements-companion.txt /tmp/requirements-companion.txt
@@ -58,7 +57,7 @@ RUN python3 -m pip install -r /tmp/requirements.txt -r /tmp/requirements-compani
 COPY . /app
 
 RUN find /app -type f -name "*.sh" -print -exec dos2unix {} + \
-    && chmod +x /app/Metatox.sh /app/docker/entrypoint.sh /app/docker/bootstrap.sh /app/docker/verify-nested-singularity.sh /app/web_app/job_worker.py \
+    && chmod +x /app/Metatox.sh /app/docker/entrypoint.sh /app/docker/bootstrap.sh /app/docker/verify-nested-singularity.sh /app/docker/install-apptainer.sh /app/web_app/job_worker.py \
     && mkdir -p /app/data/input /app/data/output /app/data/job /app/log /var/lib/metatox/singularity-cache /tmp/apptainer
 
 EXPOSE 8501
