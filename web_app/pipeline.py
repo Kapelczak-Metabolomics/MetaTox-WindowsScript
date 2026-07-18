@@ -18,7 +18,7 @@ LogCallback = Callable[[str], None]
 @dataclass
 class PipelineOptions:
     input_file: Path
-    outdir: str = "Results_Prediction"
+    outdir: str = "data/output/Results_Prediction"
     biotrans_type: str = "allHuman"
     nstep: int = 1
     cmode: int = 3
@@ -202,6 +202,12 @@ def run_pipeline(
     if not output_dir.exists():
         raise RuntimeError(f"MetaTox finished but no output directory was created: {output_dir}")
 
+    if not list(output_dir.glob("*_CompileResults.tsv")):
+        raise RuntimeError(
+            f"MetaTox finished but no compiled results were found in {output_dir}. "
+            f"Check {work_dir / 'log'} for step errors."
+        )
+
     emit("")
     emit(f"Results saved to: {output_dir}")
     return output_dir
@@ -228,16 +234,34 @@ def summarize_outputs(output_dir: Path) -> str:
     return "\n".join(lines)
 
 
-def zip_output_directory(output_dir: Path, destination: Path) -> Path:
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    if destination.exists():
-        destination.unlink()
+def zip_output_directory(output_dir: Path, destination: Path | None = None) -> Path:
+    output_dir = output_dir.resolve()
+    if not output_dir.is_dir():
+        raise FileNotFoundError(f"Output directory not found: {output_dir}")
 
-    with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+    result_files = sorted(output_dir.glob("*_CompileResults.tsv"))
+    if not result_files:
+        raise RuntimeError(
+            f"No compiled result files were found in {output_dir}. "
+            "The pipeline may have failed before generating outputs."
+        )
+
+    archive_path = (destination or output_dir / "MetaTox_results.zip").resolve()
+    archive_path.parent.mkdir(parents=True, exist_ok=True)
+    if archive_path.exists():
+        archive_path.unlink()
+
+    files_added = 0
+    with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(output_dir.rglob("*")):
-            if path.is_file():
-                archive.write(path, arcname=path.relative_to(output_dir))
-    return destination
+            if path.is_file() and path.resolve() != archive_path:
+                archive.write(path, arcname=path.relative_to(output_dir).as_posix())
+                files_added += 1
+
+    if files_added == 0 or not archive_path.is_file() or archive_path.stat().st_size == 0:
+        raise RuntimeError(f"Results archive was not created correctly: {archive_path}")
+
+    return archive_path
 
 
 def sanitize_filename(name: str) -> str:

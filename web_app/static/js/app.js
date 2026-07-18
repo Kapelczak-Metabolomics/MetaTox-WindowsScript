@@ -12,6 +12,7 @@ const inputModeTabs = document.querySelectorAll(".input-mode-tab");
 const resultsEmpty = document.getElementById("results-empty");
 const resultsContent = document.getElementById("results-content");
 const resultsSummary = document.getElementById("results-summary");
+const downloadLink = document.getElementById("download-link");
 const refreshEnvButton = document.getElementById("refresh-env");
 const envBadge = document.getElementById("env-badge");
 
@@ -62,6 +63,12 @@ function updateResults(data) {
     resultsEmpty.classList.add("hidden");
     resultsContent.classList.remove("hidden");
     resultsSummary.textContent = data.summary;
+    if (data.zip_ready) {
+      downloadLink.classList.remove("hidden", "pointer-events-none", "opacity-50");
+      downloadLink.setAttribute("aria-disabled", "false");
+    } else {
+      downloadLink.classList.add("hidden");
+    }
   }
 }
 
@@ -83,8 +90,10 @@ async function pollJobStatus() {
 
     if (data.error) {
       showAlert(data.error, "error");
+    } else if (data.output_dir && data.zip_ready) {
+      showAlert("Prediction completed successfully. Download your results from the Results tab.", "success");
     } else if (data.output_dir) {
-      showAlert("Prediction completed successfully.", "success");
+      showAlert("Prediction finished but the results archive is not ready. Check the logs.", "error");
     }
   } catch (error) {
     setRunning(false);

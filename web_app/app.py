@@ -46,6 +46,8 @@ _job_state: Dict[str, Any] = {
     "running": False,
     "logs": [],
     "output_dir": None,
+    "zip_path": None,
+    "zip_ready": False,
     "zip_name": None,
     "summary": None,
     "error": None,
@@ -56,6 +58,8 @@ def _reset_job_state() -> None:
     _job_state["running"] = False
     _job_state["logs"] = []
     _job_state["output_dir"] = None
+    _job_state["zip_path"] = None
+    _job_state["zip_ready"] = False
     _job_state["zip_name"] = None
     _job_state["summary"] = None
     _job_state["error"] = None
@@ -118,7 +122,7 @@ def _resolve_input_path(form) -> Path:
 def _build_options(form, input_path: Path) -> PipelineOptions:
     return PipelineOptions(
         input_file=input_path,
-        outdir=(form.get("outdir") or "Results_Prediction").strip(),
+        outdir=(form.get("outdir") or "data/output/Results_Prediction").strip(),
         biotrans_type=form.get("biotrans_type") or "allHuman",
         nstep=int(form.get("nstep") or 1),
         cmode=int(form.get("cmode") or 3),
@@ -137,12 +141,14 @@ def _run_job(options: PipelineOptions) -> None:
             log_callback=_append_log,
             cancel_event=_cancel_event,
         )
-        zip_path = output_dir.parent / f"{output_dir.name}.zip"
-        zip_output_directory(output_dir, zip_path)
+        zip_path = zip_output_directory(output_dir)
         with _job_lock:
             _job_state["output_dir"] = str(output_dir)
+            _job_state["zip_path"] = str(zip_path)
+            _job_state["zip_ready"] = zip_path.is_file() and zip_path.stat().st_size > 0
             _job_state["zip_name"] = zip_path.name
             _job_state["summary"] = summarize_outputs(output_dir)
+        _append_log(f"Results archive: {zip_path} ({zip_path.stat().st_size} bytes)")
     except Exception as exc:  # noqa: BLE001
         _append_log("")
         _append_log(f"ERROR: {exc}")
@@ -184,7 +190,9 @@ def job_status():
                 "running": _job_state["running"],
                 "logs": list(_job_state["logs"]),
                 "output_dir": _job_state["output_dir"],
+                "zip_path": _job_state["zip_path"],
                 "zip_name": _job_state["zip_name"],
+                "zip_ready": _job_state["zip_ready"],
                 "summary": _job_state["summary"],
                 "error": _job_state["error"],
             }
@@ -237,16 +245,35 @@ def cancel_run():
 
 @app.get("/api/download")
 def download_results():
-    zip_name = _job_state.get("zip_name")
-    output_dir = _job_state.get("output_dir")
-    if not zip_name or not output_dir:
-        return jsonify({"error": "No results available yet."}), 404
+    zip_path_value = _job_state.get("zip_path")
+    output_dir_value = _job_state.get("output_dir")
 
-    zip_path = Path(output_dir).parent / zip_name
-    if not zip_path.is_file():
-        return jsonify({"error": "Results archive not found."}), 404
+    if zip_path_value:
+        zip_path = Path(zip_path_value)
+        if zip_path.is_file() and zip_path.stat().st_size > 0:
+            return send_file(
+                zip_path,
+                as_attachment=True,
+                download_name=zip_path.name,
+                mimetype="application/zip",
+            )
 
-    return send_file(zip_path, as_attachment=True, download_name=zip_name)
+    if output_dir_value:
+        output_dir = Path(output_dir_value)
+        if output_dir.is_dir() and list(output_dir.glob("*_CompileResults.tsv")):
+            zip_path = zip_output_directory(output_dir)
+            with _job_lock:
+                _job_state["zip_path"] = str(zip_path)
+                _job_state["zip_ready"] = True
+                _job_state["zip_name"] = zip_path.name
+            return send_file(
+                zip_path,
+                as_attachment=True,
+                download_name=zip_path.name,
+                mimetype="application/zip",
+            )
+
+    return jsonify({"error": "No results archive is available yet."}), 404
 
 
 if __name__ == "__main__":

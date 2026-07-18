@@ -4,7 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from pipeline import PipelineOptions, build_command, sanitize_filename
+import zipfile
+
+from pipeline import PipelineOptions, build_command, sanitize_filename, zip_output_directory
 
 
 def test_sanitize_filename():
@@ -30,3 +32,29 @@ def test_build_command_contains_flags(tmp_path: Path):
     assert "--biotrans" in command
     assert "cyp450" in command
     assert "--predictor" in command
+
+
+def test_zip_output_directory_includes_results(tmp_path: Path):
+    output_dir = tmp_path / "results"
+    output_dir.mkdir()
+    (output_dir / "Nicotine_CompileResults.tsv").write_text("name\tSMILES\n", encoding="utf-8")
+    figures = output_dir / "Nicotine_figures"
+    figures.mkdir()
+    (figures / "plot.png").write_bytes(b"png")
+
+    zip_path = zip_output_directory(output_dir)
+
+    assert zip_path == output_dir / "MetaTox_results.zip"
+    assert zip_path.stat().st_size > 0
+    with zipfile.ZipFile(zip_path) as archive:
+        names = archive.namelist()
+    assert "Nicotine_CompileResults.tsv" in names
+    assert "Nicotine_figures/plot.png" in names
+    assert "MetaTox_results.zip" not in names
+
+
+def test_zip_output_directory_requires_compiled_results(tmp_path: Path):
+    output_dir = tmp_path / "empty"
+    output_dir.mkdir()
+    with pytest.raises(RuntimeError, match="No compiled result files"):
+        zip_output_directory(output_dir)

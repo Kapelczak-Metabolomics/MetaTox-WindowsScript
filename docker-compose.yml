@@ -16,7 +16,7 @@ services:
       TMPDIR: "/tmp"
     volumes:
       - ./data/input:/app/data/input
-      - ./data/output:/app/Results_Prediction
+      - ./data/output:/app/data/output
       - metatox-singularity-cache:/var/lib/metatox/singularity-cache
     restart: unless-stopped
     privileged: true

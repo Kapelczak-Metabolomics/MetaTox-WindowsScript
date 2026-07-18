@@ -631,3 +631,8 @@ Recording results in : ${DirOutput}
 
 Execution completed !
 "
+
+if [ "${step_failures:-0}" -gt 0 ]; then
+    echo "WARNING: ${step_failures} pipeline step(s) failed. Check /app/log for details."
+    exit 1
+fi

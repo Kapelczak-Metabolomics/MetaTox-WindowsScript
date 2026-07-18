@@ -8,7 +8,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     SINGULARITY_CACHEDIR=/var/lib/metatox/singularity-cache \
     APPTAINER_CACHEDIR=/var/lib/metatox/singularity-cache \
     APPTAINER_BINDPATH=/app \
-    TMPDIR=/tmp
+    TMPDIR=/tmp \
+    MPLBACKEND=Agg
 
 WORKDIR /app
 
@@ -48,7 +49,7 @@ RUN find /app -type f -name "*.sh" -print -exec dos2unix {} + \
 
 EXPOSE 8501
 
-VOLUME ["/app/data/input", "/app/Results_Prediction", "/var/lib/metatox/singularity-cache"]
+VOLUME ["/app/data/input", "/app/data/output", "/var/lib/metatox/singularity-cache"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD curl -fsS "http://127.0.0.1:${METATOX_PORT}/api/health" || exit 1
