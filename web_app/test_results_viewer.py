@@ -40,7 +40,28 @@ def test_load_results_for_viewer(tmp_path: Path, monkeypatch):
         "BioTrans_system",
         "Figure",
     ]
-    row = ["C2H6O", "47.0", "CCO", "ethanol", "+", "+", "", "", "", "", "", "", "", "", "", "", "", "", "", "Figure_1"]
+    row = [
+        "C4H9NO2",
+        "104.07",
+        "N/A",
+        "2-Aminobutyrate",
+        "+",
+        "+",
+        "",
+        "+",
+        "",
+        "glycination_(aliphatic_carboxyl);",
+        "Glycine conjugation",
+        "glycination_(aliphatic_carboxyl)",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "Figure_1",
+    ]
     with tsv_path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle, delimiter="\t")
         writer.writerow(header)
@@ -52,6 +73,9 @@ def test_load_results_for_viewer(tmp_path: Path, monkeypatch):
     assert payload["available"] is True
     assert len(payload["result_sets"]) == 1
     metabolite = payload["result_sets"][0]["metabolites"][0]
-    assert metabolite["iupac"] == "ethanol"
+    assert metabolite["iupac"] == "2-Aminobutyrate"
     assert metabolite["image_name"] == "Molecule_1.png"
     assert "BioTransformer3" in metabolite["tools"]
+    assert metabolite["sygma_pathway"] == "glycination_(aliphatic_carboxyl);"
+    assert metabolite["biotrans_pathway"] == "Glycine conjugation"
+    assert metabolite["gloryx_pathway"] == "glycination_(aliphatic_carboxyl)"
