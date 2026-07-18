@@ -31,12 +31,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxext6 \
     libxrender1 \
     openbabel \
-    python3 \
-    python3-pip \
+    software-properties-common \
     squashfuse \
     tzdata \
     uidmap \
     wget \
+    && add-apt-repository -y ppa:deadsnakes/ppa \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+    python3.11 \
+    python3.11-venv \
+    && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
+    && python3.11 -m ensurepip --upgrade \
+    && python3.11 -m pip install --no-cache-dir --upgrade pip \
     && ln -sf /usr/share/zoneinfo/UTC /etc/localtime \
     && rm -rf /var/lib/apt/lists/*
 
@@ -50,7 +57,7 @@ RUN wget -q "https://github.com/apptainer/apptainer/releases/download/v${APPTAIN
 
 COPY web_app/requirements.txt /tmp/requirements.txt
 COPY docker/requirements-companion.txt /tmp/requirements-companion.txt
-RUN pip3 install --no-cache-dir -r /tmp/requirements.txt -r /tmp/requirements-companion.txt
+RUN python3 -m pip install --no-cache-dir -r /tmp/requirements.txt -r /tmp/requirements-companion.txt
 
 COPY . /app
 
