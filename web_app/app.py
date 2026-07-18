@@ -19,7 +19,7 @@ from pipeline import (
     validate_input_file,
     zip_output_directory,
 )
-from elmaven_export import ELMAVEN_FILENAME, elmaven_knowns_path, export_elmaven_knowns
+from elmaven_export import elmaven_knowns_path, export_elmaven_knowns
 from results_viewer import load_results_for_viewer, resolve_iupac_for_smiles, resolve_result_image
 
 
