@@ -6,7 +6,7 @@ import csv
 import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from chemistry_utils import (
     is_missing_iupac,
@@ -59,6 +59,23 @@ def _figure_to_image_name(figure_id: str) -> Optional[str]:
     if not match:
         return None
     return f"Molecule_{match.group(1)}.png"
+
+
+def parse_mass_value(mass: str) -> Optional[float]:
+    cleaned = (mass or "").strip()
+    if not cleaned or cleaned.upper() == "NA":
+        return None
+    try:
+        return float(cleaned)
+    except ValueError:
+        return None
+
+
+def mass_group_key(mass: str) -> str:
+    value = parse_mass_value(mass)
+    if value is None:
+        return "na"
+    return f"{value:.5f}"
 
 
 def _active_tools(row: Dict[str, str]) -> List[str]:
@@ -136,6 +153,13 @@ def _parse_tsv(
     return records
 
 
+def metabolite_to_dict(record: MetaboliteRecord) -> Dict[str, object]:
+    payload = asdict(record)
+    payload["mass_value"] = parse_mass_value(record.mass)
+    payload["mass_group"] = mass_group_key(record.mass)
+    return payload
+
+
 def resolve_iupac_for_smiles(output_dir: Path, smiles_list: List[str]) -> Dict[str, str]:
     output_dir = output_dir.resolve()
     return resolve_iupac_batch(smiles_list, cache_path=output_dir / ".iupac_cache.json")
@@ -168,7 +192,7 @@ def load_results_for_viewer(output_dir: Path) -> Dict[str, object]:
         "result_sets": [
             {
                 **{key: value for key, value in asdict(result_set).items() if key != "metabolites"},
-                "metabolites": [asdict(item) for item in result_set.metabolites],
+                "metabolites": [metabolite_to_dict(item) for item in result_set.metabolites],
             }
             for result_set in result_sets
         ],

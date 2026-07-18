@@ -18,6 +18,13 @@ const viewerContent = document.getElementById("viewer-content");
 const viewerResultSet = document.getElementById("viewer-result-set");
 const viewerCount = document.getElementById("viewer-count");
 const viewerList = document.getElementById("viewer-list");
+const viewerSort = document.getElementById("viewer-sort");
+const viewerSource = document.getElementById("viewer-source");
+const viewerZipInput = document.getElementById("viewer-zip-input");
+const viewerZipUpload = document.getElementById("viewer-zip-upload");
+const viewerZipStatus = document.getElementById("viewer-zip-status");
+const viewerZipInputActive = document.getElementById("viewer-zip-input-active");
+const viewerZipUploadActive = document.getElementById("viewer-zip-upload-active");
 const refreshEnvButton = document.getElementById("refresh-env");
 const envBadge = document.getElementById("env-badge");
 
@@ -25,7 +32,9 @@ let pollTimer = null;
 let activeInputMode = "upload";
 let viewerData = null;
 let currentOutputDir = null;
+let viewerSourceLabel = "";
 let iupacRequestToken = 0;
+let variantSelections = {};
 
 function isMissingIupac(value) {
   const normalized = String(value || "")
@@ -84,6 +93,7 @@ function updateResults(data) {
     } else {
       downloadLink.classList.add("hidden");
     }
+    viewerSourceLabel = "";
     loadViewerData(data.output_dir);
   }
 }
@@ -97,6 +107,156 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
+function parseMassValue(mass) {
+  const value = Number.parseFloat(String(mass || "").trim());
+  return Number.isFinite(value) ? value : null;
+}
+
+function massGroupKey(mass) {
+  const value = parseMassValue(mass);
+  return value === null ? "na" : value.toFixed(5);
+}
+
+function buildDisplayGroups(metabolites, sortOrder) {
+  const grouped = new Map();
+  metabolites.forEach((metabolite) => {
+    const key = metabolite.mass_group || massGroupKey(metabolite.mass);
+    if (!grouped.has(key)) {
+      grouped.set(key, []);
+    }
+    grouped.get(key).push(metabolite);
+  });
+
+  const groups = [...grouped.entries()].map(([key, variants]) => {
+    const sortedVariants = [...variants].sort((left, right) => left.index - right.index);
+    return {
+      key,
+      mass: sortedVariants[0].mass,
+      massValue: parseMassValue(sortedVariants[0].mass),
+      variants: sortedVariants,
+    };
+  });
+
+  const compareByIndex = (left, right) => left.variants[0].index - right.variants[0].index;
+  const compareByMass = (left, right, direction) => {
+    if (left.massValue === null && right.massValue === null) {
+      return compareByIndex(left, right);
+    }
+    if (left.massValue === null) {
+      return 1;
+    }
+    if (right.massValue === null) {
+      return -1;
+    }
+    return direction * (left.massValue - right.massValue) || compareByIndex(left, right);
+  };
+
+  if (sortOrder === "mz-desc") {
+    groups.sort((left, right) => compareByMass(left, right, -1));
+  } else if (sortOrder === "index") {
+    groups.sort(compareByIndex);
+  } else {
+    groups.sort((left, right) => compareByMass(left, right, 1));
+  }
+
+  return groups;
+}
+
+function variantLabel(metabolite) {
+  const tools = metabolite.tools.length ? metabolite.tools.join(", ") : "No tool";
+  const title = metabolite.figure_id || `Metabolite ${metabolite.index}`;
+  return `#${metabolite.index} · ${title} · ${tools}`;
+}
+
+function bindVariantSelect(resultSet, group) {
+  const select = viewerList.querySelector(`.variant-select[data-group-key="${group.key}"]`);
+  if (!select) {
+    return;
+  }
+
+  select.addEventListener("change", () => {
+    const selectionKey = `${resultSet.id}:${group.key}`;
+    variantSelections[selectionKey] = Number.parseInt(select.value, 10) || 0;
+    const card = viewerList.querySelector(`[data-group-key="${group.key}"]`);
+    if (!card) {
+      return;
+    }
+    card.outerHTML = renderMetaboliteCard(resultSet, group, variantSelections[selectionKey]);
+    bindVariantSelect(resultSet, group);
+    hydrateIupacNames(resultSet);
+  });
+}
+
+function renderMetaboliteCard(resultSet, group, activeVariantIndex) {
+  const metabolite = group.variants[activeVariantIndex] || group.variants[0];
+  const imageUrl = metabolite.image_name
+    ? `/api/results/image/${encodeURIComponent(resultSet.id)}/${encodeURIComponent(metabolite.image_name)}?output_dir=${encodeURIComponent(currentOutputDir)}`
+    : "";
+  const tools = metabolite.tools.length
+    ? metabolite.tools.map((tool) => `<span class="tool-badge">${escapeHtml(tool)}</span>`).join("")
+    : '<span class="text-sm text-slate-400">No tool annotation</span>';
+  const variantSelect =
+    group.variants.length > 1
+      ? `
+        <div class="variant-picker">
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500" for="variant-${group.key}">
+            ${group.variants.length} renditions at m/z ${escapeHtml(group.mass || "NA")}
+          </label>
+          <select id="variant-${group.key}" class="variant-select block w-full rounded-lg border border-slate-300 bg-slate-50 p-2 text-sm focus:border-brand-500 focus:ring-brand-500" data-group-key="${group.key}">
+            ${group.variants
+              .map(
+                (variant, variantIndex) =>
+                  `<option value="${variantIndex}" ${variantIndex === activeVariantIndex ? "selected" : ""}>${escapeHtml(variantLabel(variant))}</option>`
+              )
+              .join("")}
+          </select>
+        </div>
+      `
+      : "";
+
+  return `
+    <article class="viewer-card p-4" data-group-key="${group.key}">
+      <div class="grid gap-4 md:grid-cols-[220px_1fr]">
+        <div class="viewer-structure">
+          ${
+            imageUrl
+              ? `<img src="${imageUrl}" alt="Structure for ${escapeHtml(metabolite.figure_id || metabolite.index)}" loading="lazy">`
+              : '<span class="text-sm text-slate-400">No structure image</span>'
+          }
+        </div>
+        <div class="space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h4 class="text-base font-semibold text-slate-900">${escapeHtml(metabolite.figure_id || `Metabolite ${metabolite.index}`)}</h4>
+            <span class="text-sm text-slate-500">#${metabolite.index}</span>
+          </div>
+          ${variantSelect}
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">IUPAC name</p>
+            <p class="mt-1 text-sm leading-relaxed text-slate-800 iupac-name" data-index="${metabolite.index}">
+              ${escapeHtml(isMissingIupac(metabolite.iupac) ? "Resolving name..." : metabolite.iupac)}
+            </p>
+          </div>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Formula</p>
+              <p class="mt-1 text-sm text-slate-800">${escapeHtml(metabolite.formula || "NA")}</p>
+            </div>
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Mass (+H)</p>
+              <p class="mt-1 text-sm text-slate-800">${escapeHtml(metabolite.mass || "NA")}</p>
+            </div>
+          </div>
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">SMILES</p>
+            <p class="mt-1 break-all font-mono text-xs text-slate-700">${escapeHtml(metabolite.smiles || "")}</p>
+          </div>
+          <div class="flex flex-wrap gap-2">${tools}</div>
+        </div>
+      </div>
+    </article>
+  `;
+}
+
 function renderViewerCards(resultSet) {
   if (!resultSet) {
     viewerList.innerHTML = "";
@@ -104,60 +264,26 @@ function renderViewerCards(resultSet) {
     return;
   }
 
-  viewerCount.textContent = `${resultSet.metabolite_count} predicted metabolite(s) for ${resultSet.label}`;
+  const sortOrder = viewerSort ? viewerSort.value : "mz-asc";
+  const groups = buildDisplayGroups(resultSet.metabolites, sortOrder);
+  const uniqueMasses = groups.length;
+  const totalHits = resultSet.metabolite_count;
+  const duplicateHits = totalHits - uniqueMasses;
 
-  viewerList.innerHTML = resultSet.metabolites
-    .map((metabolite) => {
-      const imageUrl = metabolite.image_name
-        ? `/api/results/image/${encodeURIComponent(resultSet.id)}/${encodeURIComponent(metabolite.image_name)}`
-        : "";
-      const tools = metabolite.tools.length
-        ? metabolite.tools.map((tool) => `<span class="tool-badge">${escapeHtml(tool)}</span>`).join("")
-        : '<span class="text-sm text-slate-400">No tool annotation</span>';
+  viewerCount.textContent =
+    duplicateHits > 0
+      ? `${uniqueMasses} unique m/z value(s), ${totalHits} total hit(s) for ${resultSet.label}`
+      : `${totalHits} predicted metabolite(s) for ${resultSet.label}`;
 
-      return `
-        <article class="viewer-card p-4">
-          <div class="grid gap-4 md:grid-cols-[220px_1fr]">
-            <div class="viewer-structure">
-              ${
-                imageUrl
-                  ? `<img src="${imageUrl}" alt="Structure for ${escapeHtml(metabolite.figure_id || metabolite.index)}" loading="lazy">`
-                  : '<span class="text-sm text-slate-400">No structure image</span>'
-              }
-            </div>
-            <div class="space-y-3">
-              <div class="flex flex-wrap items-center justify-between gap-2">
-                <h4 class="text-base font-semibold text-slate-900">${escapeHtml(metabolite.figure_id || `Metabolite ${metabolite.index}`)}</h4>
-                <span class="text-sm text-slate-500">#${metabolite.index}</span>
-              </div>
-              <div>
-                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">IUPAC name</p>
-                <p class="mt-1 text-sm leading-relaxed text-slate-800 iupac-name" data-index="${metabolite.index}">
-                  ${escapeHtml(isMissingIupac(metabolite.iupac) ? "Resolving name..." : metabolite.iupac)}
-                </p>
-              </div>
-              <div class="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Formula</p>
-                  <p class="mt-1 text-sm text-slate-800">${escapeHtml(metabolite.formula || "NA")}</p>
-                </div>
-                <div>
-                  <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Mass (+H)</p>
-                  <p class="mt-1 text-sm text-slate-800">${escapeHtml(metabolite.mass || "NA")}</p>
-                </div>
-              </div>
-              <div>
-                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">SMILES</p>
-                <p class="mt-1 break-all font-mono text-xs text-slate-700">${escapeHtml(metabolite.smiles || "")}</p>
-              </div>
-              <div class="flex flex-wrap gap-2">${tools}</div>
-            </div>
-          </div>
-        </article>
-      `;
+  viewerList.innerHTML = groups
+    .map((group) => {
+      const selectionKey = `${resultSet.id}:${group.key}`;
+      const activeVariantIndex = variantSelections[selectionKey] || 0;
+      return renderMetaboliteCard(resultSet, group, activeVariantIndex);
     })
     .join("");
 
+  groups.forEach((group) => bindVariantSelect(resultSet, group));
   hydrateIupacNames(resultSet);
 }
 
@@ -230,16 +356,40 @@ function populateViewerSelect(resultSets) {
     .join("");
 }
 
+function updateViewerSourceLabel() {
+  if (!viewerSource) {
+    return;
+  }
+  if (viewerSourceLabel) {
+    viewerSource.textContent = `Viewing uploaded archive: ${viewerSourceLabel}`;
+    viewerSource.classList.remove("hidden");
+  } else {
+    viewerSource.textContent = "";
+    viewerSource.classList.add("hidden");
+  }
+}
+
 function showViewerState(hasData) {
   viewerEmpty.classList.toggle("hidden", hasData);
   viewerContent.classList.toggle("hidden", !hasData);
 }
 
-async function loadViewerData(outputDir) {
+function getSelectedResultSet() {
+  if (!viewerData || !viewerData.result_sets) {
+    return null;
+  }
+  return viewerData.result_sets.find((resultSet) => resultSet.id === viewerResultSet.value) || viewerData.result_sets[0];
+}
+
+async function loadViewerData(outputDir, options = {}) {
   currentOutputDir = outputDir || currentOutputDir;
   if (!currentOutputDir) {
     showViewerState(false);
     return;
+  }
+
+  if (options.sourceLabel !== undefined) {
+    viewerSourceLabel = options.sourceLabel;
   }
 
   try {
@@ -252,11 +402,54 @@ async function loadViewerData(outputDir) {
     }
 
     showViewerState(true);
+    updateViewerSourceLabel();
     populateViewerSelect(data.result_sets);
     renderViewerCards(data.result_sets[0]);
   } catch (error) {
     showViewerState(false);
     console.error("Failed to load viewer data:", error);
+  }
+}
+
+async function uploadViewerZip(fileInput, statusNode) {
+  const file = fileInput?.files?.[0];
+  if (!file) {
+    if (statusNode) {
+      statusNode.textContent = "Choose a MetaTox results .zip file first.";
+    }
+    return;
+  }
+
+  if (statusNode) {
+    statusNode.textContent = "Uploading and extracting results...";
+  }
+
+  const formData = new FormData();
+  formData.append("results_zip", file);
+
+  try {
+    const response = await fetch("/api/results/upload-zip", {
+      method: "POST",
+      body: formData,
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "Failed to load results zip.");
+    }
+
+    variantSelections = {};
+    await loadViewerData(data.output_dir, { sourceLabel: data.label || file.name });
+    if (statusNode) {
+      statusNode.textContent = `Loaded ${file.name}.`;
+    }
+    showAlert("Results archive loaded into the viewer.", "success");
+  } catch (error) {
+    if (statusNode) {
+      statusNode.textContent = error.message;
+    }
+    showAlert(error.message, "error");
+  } finally {
+    fileInput.value = "";
   }
 }
 
@@ -293,6 +486,8 @@ async function pollJobStatus() {
 async function startRun() {
   hideAlert();
   viewerData = null;
+  viewerSourceLabel = "";
+  variantSelections = {};
   showViewerState(false);
 
   const formData = new FormData(optionsForm);
@@ -356,12 +551,22 @@ async function refreshEnvironment() {
 }
 
 viewerResultSet.addEventListener("change", () => {
-  if (!viewerData || !viewerData.result_sets) {
-    return;
-  }
-  const selected = viewerData.result_sets.find((resultSet) => resultSet.id === viewerResultSet.value);
-  renderViewerCards(selected);
+  renderViewerCards(getSelectedResultSet());
 });
+
+if (viewerSort) {
+  viewerSort.addEventListener("change", () => {
+    renderViewerCards(getSelectedResultSet());
+  });
+}
+
+if (viewerZipUpload && viewerZipInput) {
+  viewerZipUpload.addEventListener("click", () => uploadViewerZip(viewerZipInput, viewerZipStatus));
+}
+
+if (viewerZipUploadActive && viewerZipInputActive) {
+  viewerZipUploadActive.addEventListener("click", () => uploadViewerZip(viewerZipInputActive, null));
+}
 
 runButton.addEventListener("click", startRun);
 cancelButton.addEventListener("click", cancelRun);

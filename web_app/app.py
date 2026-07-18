@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import shutil
+import uuid
 from pathlib import Path
 
 from flask import Flask, abort, jsonify, render_template, request, send_file
@@ -10,6 +12,7 @@ from job_store import JobStore
 from pipeline import (
     PipelineOptions,
     check_environment,
+    extract_results_zip,
     get_work_dir,
     metapredictor_is_available,
     sanitize_filename,
@@ -36,7 +39,7 @@ GLORYX_OPTIONS = {
 }
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = 512 * 1024 * 1024
 _job_store: JobStore | None = None
 
 
@@ -213,16 +216,51 @@ def download_results():
 
 
 def _output_dir_from_request() -> Path | None:
-    snapshot = get_job_store().read_state()
-    if snapshot.output_dir:
-        return Path(snapshot.output_dir)
     output_dir = request.args.get("output_dir")
     if output_dir:
         candidate = Path(output_dir).resolve()
         allowed_root = (get_work_dir() / "data" / "output").resolve()
         if allowed_root in candidate.parents or candidate == allowed_root:
             return candidate
+
+    snapshot = get_job_store().read_state()
+    if snapshot.output_dir:
+        return Path(snapshot.output_dir)
     return None
+
+
+@app.post("/api/results/upload-zip")
+def upload_results_zip():
+    upload = request.files.get("results_zip")
+    if not upload or not upload.filename:
+        return jsonify({"error": "Choose a MetaTox results .zip file to upload."}), 400
+
+    filename = sanitize_filename(upload.filename)
+    if not filename.lower().endswith(".zip"):
+        return jsonify({"error": "Only .zip archives are supported."}), 400
+
+    upload_root = (get_work_dir() / "data" / "output" / "viewer_uploads").resolve()
+    upload_root.mkdir(parents=True, exist_ok=True)
+    destination = upload_root / f"{Path(filename).stem}_{uuid.uuid4().hex[:8]}"
+    archive_path = upload_root / f"upload_{uuid.uuid4().hex[:8]}.zip"
+
+    try:
+        upload.save(archive_path)
+        output_dir = extract_results_zip(archive_path, destination)
+    except Exception as exc:  # noqa: BLE001
+        if destination.exists():
+            shutil.rmtree(destination, ignore_errors=True)
+        return jsonify({"error": str(exc)}), 400
+    finally:
+        archive_path.unlink(missing_ok=True)
+
+    return jsonify(
+        {
+            "output_dir": str(output_dir),
+            "label": filename,
+            "source": "upload",
+        }
+    )
 
 
 @app.get("/api/results/viewer")
