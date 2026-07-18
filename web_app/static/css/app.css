@@ -66,3 +66,31 @@
   font-weight: 500;
   padding: 0.25rem 0.625rem;
 }
+
+.pathway-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.pathway-item {
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  background: #f8fafc;
+  padding: 0.625rem 0.75rem;
+}
+
+.pathway-source {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.pathway-value {
+  margin-top: 0.25rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: #1e293b;
+}

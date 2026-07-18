@@ -176,6 +176,59 @@ function variantLabel(metabolite) {
   return `#${metabolite.index} · ${title} · ${tools}`;
 }
 
+function parsePathwayEntries(value) {
+  return String(value || "")
+    .split(";")
+    .map((entry) => entry.trim().replace(/[;,]+$/, "").trim())
+    .filter((entry) => entry && entry.toUpperCase() !== "NA");
+}
+
+function formatPathwayEntry(value) {
+  const cleaned = String(value || "").trim();
+  if (!cleaned) {
+    return "";
+  }
+  if (/[A-Z]/.test(cleaned) && cleaned.includes(" ")) {
+    return cleaned;
+  }
+  return cleaned.replaceAll("_", " ");
+}
+
+function renderPathwaySection(metabolite) {
+  const sources = [
+    { label: "SygMa", value: metabolite.sygma_pathway },
+    { label: "BioTransformer", value: metabolite.biotrans_pathway },
+    { label: "GLORYx", value: metabolite.gloryx_pathway },
+  ]
+    .map((source) => ({
+      ...source,
+      entries: parsePathwayEntries(source.value).map(formatPathwayEntry),
+    }))
+    .filter((source) => source.entries.length > 0);
+
+  if (!sources.length) {
+    return "";
+  }
+
+  const items = sources
+    .map(
+      (source) => `
+        <div class="pathway-item">
+          <p class="pathway-source">${escapeHtml(source.label)}</p>
+          <p class="pathway-value">${source.entries.map((entry) => escapeHtml(entry)).join("<br>")}</p>
+        </div>
+      `
+    )
+    .join("");
+
+  return `
+    <div>
+      <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Predicted transformations</p>
+      <div class="pathway-list mt-2">${items}</div>
+    </div>
+  `;
+}
+
 function bindVariantSelect(resultSet, group) {
   const select = viewerList.querySelector(`.variant-select[data-group-key="${group.key}"]`);
   if (!select) {
@@ -259,6 +312,7 @@ function renderMetaboliteCard(resultSet, group, activeVariantIndex) {
             <p class="mt-1 break-all font-mono text-xs text-slate-700">${escapeHtml(metabolite.smiles || "")}</p>
           </div>
           <div class="flex flex-wrap gap-2">${tools}</div>
+          ${renderPathwaySection(metabolite)}
         </div>
       </div>
     </article>
