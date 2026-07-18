@@ -8,6 +8,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     SINGULARITY_CACHEDIR=/var/lib/metatox/singularity-cache \
     APPTAINER_CACHEDIR=/var/lib/metatox/singularity-cache \
     APPTAINER_BINDPATH=/app \
+    APPTAINER_NO_MOUNT=/etc/localtime \
+    SINGULARITY_NO_MOUNT=/etc/localtime \
     TMPDIR=/tmp \
     MPLBACKEND=Agg
 
@@ -19,14 +21,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     dos2unix \
     file \
+    fontconfig \
     fuse \
     gawk \
     git \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
     python3 \
     python3-pip \
     squashfuse \
+    tzdata \
     uidmap \
     wget \
+    && ln -sf /usr/share/zoneinfo/UTC /etc/localtime \
     && rm -rf /var/lib/apt/lists/*
 
 ARG APPTAINER_VERSION=1.3.6

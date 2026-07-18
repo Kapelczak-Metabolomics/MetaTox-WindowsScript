@@ -173,6 +173,8 @@ def run_pipeline(
     run_env.setdefault("METATOX_VERBOSE", "true")
     run_env.setdefault("METATOX_NATIVE_COMPILE", "true")
     run_env.setdefault("APPTAINER_BINDPATH", str(work_dir))
+    run_env.setdefault("APPTAINER_NO_MOUNT", "/etc/localtime")
+    run_env.setdefault("SINGULARITY_NO_MOUNT", "/etc/localtime")
 
     process = subprocess.Popen(
         command,
