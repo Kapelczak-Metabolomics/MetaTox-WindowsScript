@@ -174,8 +174,8 @@ def run_pipeline(
     run_env.setdefault("METATOX_NATIVE_COMPILE", "true")
     run_env.pop("APPTAINER_BINDPATH", None)
     run_env.pop("SINGULARITY_BINDPATH", None)
-    run_env.setdefault("APPTAINER_NO_MOUNT", "/etc/localtime")
-    run_env.setdefault("SINGULARITY_NO_MOUNT", "/etc/localtime")
+    run_env.setdefault("APPTAINER_NO_MOUNT", "cwd,home,/etc/localtime")
+    run_env.setdefault("SINGULARITY_NO_MOUNT", "cwd,home,/etc/localtime")
     run_env.setdefault("APPTAINER_TMPDIR", "/tmp/apptainer")
     run_env.setdefault("SINGULARITY_TMPDIR", "/tmp/apptainer")
 

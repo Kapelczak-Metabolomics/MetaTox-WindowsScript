@@ -215,9 +215,11 @@ run_with_spinner() {
 
 work_dir="${PWD}"
 
-# Do not bind the full /app tree into nested Singularity images: it hides
-# scripts shipped inside GLORYx/MetaTrans containers (e.g. gloryx_api.py).
+# Nested Singularity inside Docker: never mount host /app over container /app.
 unset APPTAINER_BINDPATH SINGULARITY_BINDPATH
+export APPTAINER_NO_MOUNT="${APPTAINER_NO_MOUNT:-cwd,home,/etc/localtime}"
+export SINGULARITY_NO_MOUNT="${SINGULARITY_NO_MOUNT:-cwd,home,/etc/localtime}"
+SINGULARITY_COMMON_ARGS=(--no-mount cwd,home)
 
 tmp="${work_dir}/tmp/"
 if test -d $tmp; then
@@ -505,22 +507,23 @@ do
     biotransformer_job () {
         set -e
         set -o pipefail
+        local mol="${tab_molecule[${indice}]}"
 
-        singularity exec -B "${tmp}:${tmp}" \
+        singularity exec "${SINGULARITY_COMMON_ARGS[@]}" -B "${tmp}:/tmp" \
         https://depot.galaxyproject.org/singularity/biotransformer:3.0.20230403--hdfd78af_0 biotransformer \
         -b "${type}" \
         -k "pred" \
         -cm "${cmode}" \
         -s "${nstep}" \
         -ismi "${tab_smiles[${indice}]}" \
-        -ocsv "${tmp}${tab_molecule[${indice}]}_Biotransformer3_v1.csv" 2>&1 | tee -a "${log}${tab_molecule[${indice}]}_Biotransformer3_log.txt"
+        -ocsv "/tmp/${mol}_Biotransformer3_v1.csv" 2>&1 | tee -a "${log}${mol}_Biotransformer3_log.txt"
 
-        singularity exec -B ${tmp}:/tmp library://abourdais/default/rdkit csvformat \
-        -D ";" "${tmp}${tab_molecule[${indice}]}_Biotransformer3_v1.csv" \
+        singularity exec "${SINGULARITY_COMMON_ARGS[@]}" -B "${tmp}:/tmp" library://abourdais/default/rdkit csvformat \
+        -D ";" "/tmp/${mol}_Biotransformer3_v1.csv" \
         | gawk -v RS='"' 'NR % 2 == 0 { gsub(/\n/, "") } { printf("%s%s", $0, RT) }' \
-        > "${tmp}${tab_molecule[${indice}]}_Biotransformer3.csv"
+        > "${tmp}${mol}_Biotransformer3.csv"
 
-        rm ${tmp}${tab_molecule[${indice}]}_Biotransformer3_v1.csv
+        rm "${tmp}${mol}_Biotransformer3_v1.csv"
     }
 
     if ! run_with_spinner "Biotransformer3 ..." biotransformer_job; then
@@ -535,7 +538,7 @@ do
 
     sygma_job () {
         set -e
-        singularity run docker://3dechem/sygma ${tab_smiles[${indice}]} \
+        singularity run "${SINGULARITY_COMMON_ARGS[@]}" docker://3dechem/sygma ${tab_smiles[${indice}]} \
         -1 $phase1 \
         -2 $phase2 \
         >> "${tmp}${tab_molecule[${indice}]}_Sygma.sdf" 2>> "${log}${tab_molecule[${indice}]}_Sygma_log.txt"
@@ -552,11 +555,12 @@ do
 
     gloryx_job () {
         set -e
-        singularity run -B "${tmp}:${tmp}" library://abourdais/default/gloryx_api \
+        local mol="${tab_molecule[${indice}]}"
+        singularity run "${SINGULARITY_COMMON_ARGS[@]}" -B "${tmp}:/tmp" library://abourdais/default/gloryx_api \
         --phase $phase_gloryx \
         --smile ${tab_smiles[${indice}]} \
-        --output ${tmp}${tab_molecule[${indice}]}_Gloryx.csv \
-        > "${log}${tab_molecule[${indice}]}_Gloryx_log.txt" 2>&1
+        --output "/tmp/${mol}_Gloryx.csv" \
+        > "${log}${mol}_Gloryx_log.txt" 2>&1
     }
 
     if ! run_with_spinner "GloryX ..." gloryx_job; then
@@ -570,14 +574,15 @@ do
 
     metatrans_job () {
         set -e
-        singularity run --containall -B ${tmp}:/tmp --writable-tmpfs library://abourdais/default/metatrans \
-        -n ${tab_molecule[${indice}]} \
+        local mol="${tab_molecule[${indice}]}"
+        singularity run "${SINGULARITY_COMMON_ARGS[@]}" --containall -B "${tmp}:/tmp" --writable-tmpfs library://abourdais/default/metatrans \
+        -n ${mol} \
         -s ${tab_smiles[${indice}]} \
-        -r /tmp/${tab_molecule[${indice}]}_MetaTrans.csv \
-        -l /tmp/${tab_molecule[${indice}]}_MetaTrans_log.txt
+        -r /tmp/${mol}_MetaTrans.csv \
+        -l /tmp/${mol}_MetaTrans_log.txt
 
-        mv ${tmp}${tab_molecule[${indice}]}_MetaTrans_log.txt ${log}
-        rm -rf ${tmp}Predictions
+        mv "${tmp}${mol}_MetaTrans_log.txt" "${log}"
+        rm -rf "${tmp}Predictions"
     }
 
     if ! run_with_spinner "MetaTrans ..." metatrans_job; then
@@ -603,14 +608,14 @@ do
                 --dirfig "${results_figure}" \
                 > "${log}${tab_molecule[${indice}]}_Compagnion_log.txt" 2>&1
         else
-            singularity exec -B ${DirScripts}:/tmp library://abourdais/default/rdkit python ${Script_Metatox_Companion} \
-                --biotrans "${tmp}${tab_molecule[${indice}]}_Biotransformer3.csv" \
-                --sygma "${tmp}${tab_molecule[${indice}]}_Sygma.sdf" \
-                --metapred "${tmp}${tab_molecule[${indice}]}_Metapred.csv" \
-                --metatrans "${tmp}${tab_molecule[${indice}]}_MetaTrans.csv" \
-                --gloryx "${tmp}${tab_molecule[${indice}]}_Gloryx.csv" \
+            singularity exec "${SINGULARITY_COMMON_ARGS[@]}" -B "${tmp}:/tmp" -B "${DirScripts}:/scripts" library://abourdais/default/rdkit python /scripts/metatox_compagnion.py \
+                --biotrans "/tmp/${tab_molecule[${indice}]}_Biotransformer3.csv" \
+                --sygma "/tmp/${tab_molecule[${indice}]}_Sygma.sdf" \
+                --metapred "/tmp/${tab_molecule[${indice}]}_Metapred.csv" \
+                --metatrans "/tmp/${tab_molecule[${indice}]}_MetaTrans.csv" \
+                --gloryx "/tmp/${tab_molecule[${indice}]}_Gloryx.csv" \
                 --output "${results_file}" \
-                --figure "${tmp}${tab_molecule[${indice}]}_ListeSmile.txt" \
+                --figure "/tmp/${tab_molecule[${indice}]}_ListeSmile.txt" \
                 --dirfig "${results_figure}" \
                 > "${log}${tab_molecule[${indice}]}_Compagnion_log.txt" 2>&1
         fi
