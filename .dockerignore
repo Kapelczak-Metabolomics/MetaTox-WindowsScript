@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.git/
+.gitignore
+dist/
+windows_app/.pytest_cache/
+*.md
+!docker/README.md
+data/
+log/
+tmp/
+Results_Prediction/

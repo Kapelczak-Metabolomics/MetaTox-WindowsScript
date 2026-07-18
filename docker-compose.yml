@@ -1,0 +1,21 @@
+services:
+  metatox:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: metatox:latest
+    container_name: metatox
+    ports:
+      - "${METATOX_PORT:-8501}:8501"
+    environment:
+      METATOX_PORT: "8501"
+      METATOX_PREFETCH_IMAGES: "${METATOX_PREFETCH_IMAGES:-false}"
+    volumes:
+      - ./data/input:/app/data/input
+      - ./data/output:/app/Results_Prediction
+      - metatox-singularity-cache:/var/lib/metatox/singularity-cache
+    restart: unless-stopped
+    privileged: true
+
+volumes:
+  metatox-singularity-cache:

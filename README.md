@@ -18,7 +18,20 @@ As this project was designed for non-bioinformaticians, a **graphical interface 
 
 This project has been tested and run on **linux** and **windows-WSL2**.
 
-### Windows desktop app
+### Docker deployment (recommended)
+
+Run MetaTox with a browser-based GUI and bundled dependencies:
+
+```bash
+docker compose up --build
+```
+
+Open `http://localhost:8501`, upload your input file, and download results from the web UI.
+
+- Setup guide: [`docker/README.md`](docker/README.md)
+- Outputs are saved to `data/output/`
+
+### Windows desktop app (alternative)
 
 A native Windows GUI is available in [`windows_app/`](windows_app/). It packages as `MetaToxGUI.exe` and runs the same pipeline through WSL2.
 

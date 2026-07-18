@@ -1,0 +1,138 @@
+# MetaTox Docker deployment
+
+Run MetaTox as a self-contained Docker service with a browser-based GUI. No WSL, no Windows `.exe`, and no local Singularity installation required on the host.
+
+## What you get
+
+- **Web GUI** at `http://localhost:8501`
+- **Bundled dependencies** inside the container (Apptainer/Singularity, Python, pipeline scripts)
+- **Persistent outputs** in `./data/output`
+- **One-command deploy** with Docker Compose
+
+## Requirements
+
+- Docker Desktop (Windows/macOS) or Docker Engine (Linux)
+- ~8 GB free disk space for Singularity images on first run
+- Internet access on first prediction (downloads BioTransformer, SygMa, GLORYx, MetaTrans images)
+
+## Quick start
+
+From the repository root:
+
+```bash
+docker compose up --build
+```
+
+Open your browser:
+
+```text
+http://localhost:8501
+```
+
+Stop the service:
+
+```bash
+docker compose down
+```
+
+## First run
+
+1. Open the **Run** tab
+2. Upload a text file (`MoleculeName,SMILES` per line) or use the bundled example
+3. Adjust options in the sidebar
+4. Click **Run prediction**
+5. Download results from the **Results** tab when finished
+
+Outputs are written to:
+
+```text
+data/output/Results_Prediction/
+```
+
+## Input format
+
+```text
+Nicotine,CN1CCC[C@H]1c2cccnc2
+```
+
+## Optional: prefetch Singularity images
+
+The first prediction downloads several large images. To prefetch them at startup:
+
+```bash
+METATOX_PREFETCH_IMAGES=true docker compose up --build
+```
+
+## Optional: Meta-Predictor
+
+Meta-Predictor is disabled by default because it requires CUDA and an extra setup step.
+
+To enable it:
+
+1. Clone Meta-Predictor into the repository before building:
+
+```bash
+git clone https://github.com/zhukeyun/Meta-Predictor
+mkdir -p Meta-Predictor/prediction
+mv "Meta-Predictor/model/SoM identifier" Meta-Predictor/model/SoM_identifier
+mv "Meta-Predictor/model/metabolite predictor" Meta-Predictor/model/metabolite_predictor
+chmod +x Meta-Predictor/predict-top15.sh
+```
+
+2. Rebuild the image
+3. Enable **Meta-Predictor** in the sidebar
+
+## Custom port
+
+```bash
+METATOX_PORT=8080 docker compose up --build
+```
+
+## Pull prebuilt image
+
+If your repository publishes images to GitHub Container Registry:
+
+```bash
+docker pull ghcr.io/kapelczak-metabolomics/metatox:latest
+docker run --rm -it \
+  --privileged \
+  -p 8501:8501 \
+  -v "$(pwd)/data/output:/app/data/output" \
+  -v "$(pwd)/data/input:/app/data/input" \
+  ghcr.io/kapelczak-metabolomics/metatox:latest
+```
+
+## Troubleshooting
+
+### Container exits immediately
+
+- Check logs: `docker compose logs -f metatox`
+- Ensure port `8501` is free
+
+### Permission errors with Apptainer
+
+- Docker Compose runs the service with `privileged: true` so Apptainer can execute nested containers
+- On hardened hosts, ask your admin to allow privileged containers
+
+### Predictions are slow the first time
+
+- Expected: Singularity images are downloaded on demand
+- Use `METATOX_PREFETCH_IMAGES=true` to warm the cache at startup
+
+### Results tab is empty
+
+- Wait until the log shows `Execution completed !`
+- Check `data/output/Results_Prediction/`
+
+## Architecture
+
+```text
+Browser -> Streamlit GUI (web_app/app.py)
+                |
+                v
+         Metatox.sh pipeline
+                |
+                v
+   Apptainer/Singularity images
+   (BioTransformer3, SygMa, GLORYx, MetaTrans, RDKit)
+```
