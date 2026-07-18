@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template, request, send_file
+from flask import Flask, abort, jsonify, render_template, request, send_file
 
 from job_store import JobStore
 from pipeline import (
@@ -16,6 +16,7 @@ from pipeline import (
     validate_input_file,
     zip_output_directory,
 )
+from results_viewer import load_results_for_viewer, resolve_result_image
 
 
 BIOTRANS_OPTIONS = {
@@ -209,6 +210,38 @@ def download_results():
             )
 
     return jsonify({"error": "No results archive is available yet."}), 404
+
+
+def _output_dir_from_request() -> Path | None:
+    snapshot = get_job_store().read_state()
+    if snapshot.output_dir:
+        return Path(snapshot.output_dir)
+    output_dir = request.args.get("output_dir")
+    if output_dir:
+        candidate = Path(output_dir).resolve()
+        allowed_root = (get_work_dir() / "data" / "output").resolve()
+        if allowed_root in candidate.parents or candidate == allowed_root:
+            return candidate
+    return None
+
+
+@app.get("/api/results/viewer")
+def results_viewer_api():
+    output_dir = _output_dir_from_request()
+    if not output_dir:
+        return jsonify({"available": False, "result_sets": []})
+    return jsonify(load_results_for_viewer(output_dir))
+
+
+@app.get("/api/results/image/<molecule_id>/<path:image_name>")
+def results_image(molecule_id: str, image_name: str):
+    output_dir = _output_dir_from_request()
+    if not output_dir:
+        abort(404)
+    image_path = resolve_result_image(output_dir, molecule_id, image_name)
+    if not image_path:
+        abort(404)
+    return send_file(image_path, mimetype="image/png")
 
 
 if __name__ == "__main__":

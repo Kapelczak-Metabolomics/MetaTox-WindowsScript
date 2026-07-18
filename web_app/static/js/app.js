@@ -13,11 +13,18 @@ const resultsEmpty = document.getElementById("results-empty");
 const resultsContent = document.getElementById("results-content");
 const resultsSummary = document.getElementById("results-summary");
 const downloadLink = document.getElementById("download-link");
+const viewerEmpty = document.getElementById("viewer-empty");
+const viewerContent = document.getElementById("viewer-content");
+const viewerResultSet = document.getElementById("viewer-result-set");
+const viewerCount = document.getElementById("viewer-count");
+const viewerList = document.getElementById("viewer-list");
 const refreshEnvButton = document.getElementById("refresh-env");
 const envBadge = document.getElementById("env-badge");
 
 let pollTimer = null;
 let activeInputMode = "upload";
+let viewerData = null;
+let currentOutputDir = null;
 
 function setInputMode(mode) {
   activeInputMode = mode;
@@ -69,6 +76,115 @@ function updateResults(data) {
     } else {
       downloadLink.classList.add("hidden");
     }
+    loadViewerData(data.output_dir);
+  }
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function renderViewerCards(resultSet) {
+  if (!resultSet) {
+    viewerList.innerHTML = "";
+    viewerCount.textContent = "";
+    return;
+  }
+
+  viewerCount.textContent = `${resultSet.metabolite_count} predicted metabolite(s) for ${resultSet.label}`;
+
+  viewerList.innerHTML = resultSet.metabolites
+    .map((metabolite) => {
+      const imageUrl = metabolite.image_name
+        ? `/api/results/image/${encodeURIComponent(resultSet.id)}/${encodeURIComponent(metabolite.image_name)}`
+        : "";
+      const tools = metabolite.tools.length
+        ? metabolite.tools.map((tool) => `<span class="tool-badge">${escapeHtml(tool)}</span>`).join("")
+        : '<span class="text-sm text-slate-400">No tool annotation</span>';
+
+      return `
+        <article class="viewer-card p-4">
+          <div class="grid gap-4 md:grid-cols-[220px_1fr]">
+            <div class="viewer-structure">
+              ${
+                imageUrl
+                  ? `<img src="${imageUrl}" alt="Structure for ${escapeHtml(metabolite.figure_id || metabolite.index)}" loading="lazy">`
+                  : '<span class="text-sm text-slate-400">No structure image</span>'
+              }
+            </div>
+            <div class="space-y-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <h4 class="text-base font-semibold text-slate-900">${escapeHtml(metabolite.figure_id || `Metabolite ${metabolite.index}`)}</h4>
+                <span class="text-sm text-slate-500">#${metabolite.index}</span>
+              </div>
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">IUPAC name</p>
+                <p class="mt-1 text-sm leading-relaxed text-slate-800">${escapeHtml(metabolite.iupac || "Name unavailable")}</p>
+              </div>
+              <div class="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Formula</p>
+                  <p class="mt-1 text-sm text-slate-800">${escapeHtml(metabolite.formula || "NA")}</p>
+                </div>
+                <div>
+                  <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Mass (+H)</p>
+                  <p class="mt-1 text-sm text-slate-800">${escapeHtml(metabolite.mass || "NA")}</p>
+                </div>
+              </div>
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">SMILES</p>
+                <p class="mt-1 break-all font-mono text-xs text-slate-700">${escapeHtml(metabolite.smiles || "")}</p>
+              </div>
+              <div class="flex flex-wrap gap-2">${tools}</div>
+            </div>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function populateViewerSelect(resultSets) {
+  viewerResultSet.innerHTML = resultSets
+    .map(
+      (resultSet) =>
+        `<option value="${escapeHtml(resultSet.id)}">${escapeHtml(resultSet.label)} (${resultSet.metabolite_count})</option>`
+    )
+    .join("");
+}
+
+function showViewerState(hasData) {
+  viewerEmpty.classList.toggle("hidden", hasData);
+  viewerContent.classList.toggle("hidden", !hasData);
+}
+
+async function loadViewerData(outputDir) {
+  currentOutputDir = outputDir || currentOutputDir;
+  if (!currentOutputDir) {
+    showViewerState(false);
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/results/viewer?output_dir=${encodeURIComponent(currentOutputDir)}`);
+    const data = await response.json();
+    viewerData = data;
+    if (!data.available || !data.result_sets.length) {
+      showViewerState(false);
+      return;
+    }
+
+    showViewerState(true);
+    populateViewerSelect(data.result_sets);
+    renderViewerCards(data.result_sets[0]);
+  } catch (error) {
+    showViewerState(false);
+    console.error("Failed to load viewer data:", error);
   }
 }
 
@@ -91,7 +207,8 @@ async function pollJobStatus() {
     if (data.error) {
       showAlert(data.error, "error");
     } else if (data.output_dir && data.zip_ready) {
-      showAlert("Prediction completed successfully. Download your results from the Results tab.", "success");
+      showAlert("Prediction completed successfully. Browse results in the Viewer tab or download the zip.", "success");
+      await loadViewerData(data.output_dir);
     } else if (data.output_dir) {
       showAlert("Prediction finished but the results archive is not ready. Check the logs.", "error");
     }
@@ -103,6 +220,8 @@ async function pollJobStatus() {
 
 async function startRun() {
   hideAlert();
+  viewerData = null;
+  showViewerState(false);
 
   const formData = new FormData(optionsForm);
   if (activeInputMode === "upload" && inputFile.files.length > 0) {
@@ -164,6 +283,14 @@ async function refreshEnvironment() {
   }
 }
 
+viewerResultSet.addEventListener("change", () => {
+  if (!viewerData || !viewerData.result_sets) {
+    return;
+  }
+  const selected = viewerData.result_sets.find((resultSet) => resultSet.id === viewerResultSet.value);
+  renderViewerCards(selected);
+});
+
 runButton.addEventListener("click", startRun);
 cancelButton.addEventListener("click", cancelRun);
 refreshEnvButton.addEventListener("click", refreshEnvironment);
@@ -179,6 +306,8 @@ fetch("/api/job")
     updateResults(data);
     if (data.running) {
       pollJobStatus();
+    } else if (data.output_dir) {
+      loadViewerData(data.output_dir);
     }
   })
   .catch(() => {});

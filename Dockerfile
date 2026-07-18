@@ -3,6 +3,7 @@ FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive \
     APP_ROOT=/app \
     METATOX_PORT=8501 \
+    PYTHONPATH=/app/web_app \
     METATOX_VERBOSE=true \
     METATOX_NATIVE_COMPILE=true \
     SINGULARITY_CACHEDIR=/var/lib/metatox/singularity-cache \
@@ -29,6 +30,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsm6 \
     libxext6 \
     libxrender1 \
+    openbabel \
     python3 \
     python3-pip \
     squashfuse \

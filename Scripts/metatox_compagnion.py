@@ -7,12 +7,21 @@ import argparse
 import csv
 import os
 import re
+import sys
+
+_APP_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _APP_ROOT not in sys.path:
+    sys.path.insert(0, _APP_ROOT)
+_WEB_APP = os.path.join(_APP_ROOT, "web_app")
+if _WEB_APP not in sys.path:
+    sys.path.insert(0, _WEB_APP)
 
 import matplotlib
 
 matplotlib.use("Agg")
 
 import rdkit
+from chemistry_utils import smiles_to_iupac
 from molmass import Formula
 from rdkit import Chem
 from rdkit.Chem import Draw
@@ -349,7 +358,7 @@ dir_figures = args["dirfig"]
 figures_handle = open(figures_file, "a", encoding="utf-8")
 
 #Entete
-print("FormuleBrute\tMasse(+H)\tSmiles\tSygma\tBioTransformer3\tMetaTrans\tGloryX\tMetaPredictor\tSygma_pathway\tBioTrans_pathway\tGloryX_pathway\tSygma_score\tGloryX_score\tBioTrans_AlogP\tBioTrans_precursor\tBioTrans_precursor\tBioTrans_enzyme\tBioTrans_system\tFigure", file=results_file)
+print("FormuleBrute\tMasse(+H)\tSmiles\tIupac\tSygma\tBioTransformer3\tMetaTrans\tGloryX\tMetaPredictor\tSygma_pathway\tBioTrans_pathway\tGloryX_pathway\tSygma_score\tGloryX_score\tBioTrans_AlogP\tBioTrans_precursor\tBioTrans_precursor\tBioTrans_enzyme\tBioTrans_system\tFigure", file=results_file)
 
 #Count metabolites
 nbmolecule=0
@@ -385,7 +394,8 @@ for smiles in smiles_list:
             stored_smiles = figure_dic.get(smiles) or smiles
             print(f"Molecule_{nbmolecule},{stored_smiles}", file=figures_handle)
     
-    print(f"{formulebrute}\t{mass}\t{smiles}\t{sygma}\t{biotrans}\t{metatrans}\t{gloryx}\t{metapred}\t{sygma_pathway}\t{biotrans_pathway}\t{gloryx_pathway}\t{sygma_score}\t{gloryx_score}\t{biotrans_score}\t{biotrans_prec_for}\t{biotrans_prec_smiles}\t{biotrans_enzyme}\t{biotrans_system}\t{figure}".replace("None", ""), file=results_file)
+    iupac_value = smiles_to_iupac(smiles) if formulebrute != "NA" else "NA"
+    print(f"{formulebrute}\t{mass}\t{smiles}\t{iupac_value}\t{sygma}\t{biotrans}\t{metatrans}\t{gloryx}\t{metapred}\t{sygma_pathway}\t{biotrans_pathway}\t{gloryx_pathway}\t{sygma_score}\t{gloryx_score}\t{biotrans_score}\t{biotrans_prec_for}\t{biotrans_prec_smiles}\t{biotrans_enzyme}\t{biotrans_system}\t{figure}".replace("None", ""), file=results_file)
 
 figures_handle.close()
 results_file.close()

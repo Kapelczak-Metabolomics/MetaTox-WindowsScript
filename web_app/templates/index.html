@@ -102,6 +102,9 @@
           <li class="me-2" role="presentation">
             <button class="inline-block rounded-t-lg border-b-2 p-4" id="results-tab" data-tabs-target="#results-panel" type="button" role="tab">Results</button>
           </li>
+          <li class="me-2" role="presentation">
+            <button class="inline-block rounded-t-lg border-b-2 p-4" id="viewer-tab" data-tabs-target="#viewer-panel" type="button" role="tab">Viewer</button>
+          </li>
           <li role="presentation">
             <button class="inline-block rounded-t-lg border-b-2 p-4" id="environment-tab" data-tabs-target="#environment-panel" type="button" role="tab">Environment</button>
           </li>
@@ -178,6 +181,26 @@
             <a id="download-link" href="/api/download" class="inline-flex items-center rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-700">
               Download results (.zip)
             </a>
+          </div>
+        </div>
+
+        <div id="viewer-panel" class="hidden" role="tabpanel">
+          <div id="viewer-empty" class="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-slate-500">
+            Run a prediction to browse predicted metabolite structures here.
+          </div>
+          <div id="viewer-content" class="hidden space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 class="text-lg font-semibold text-slate-900">Results viewer</h3>
+                <p class="text-sm text-slate-500">Scroll through predicted metabolites with structures and IUPAC names.</p>
+              </div>
+              <div class="min-w-[14rem]">
+                <label for="viewer-result-set" class="mb-1 block text-sm font-medium text-slate-700">Input molecule</label>
+                <select id="viewer-result-set" class="block w-full rounded-lg border border-slate-300 bg-slate-50 p-2.5 text-sm focus:border-brand-500 focus:ring-brand-500"></select>
+              </div>
+            </div>
+            <p id="viewer-count" class="text-sm text-slate-500"></p>
+            <div id="viewer-list" class="max-h-[42rem] space-y-4 overflow-y-auto pr-1"></div>
           </div>
         </div>
 
