@@ -238,6 +238,7 @@ def summarize_outputs(output_dir: Path) -> str:
         f"Output folder: {output_dir}",
         f"Compiled result files: {len(tsv_files)}",
         f"Figure folders: {len(figure_dirs)}",
+        f"Structure images: {len(figure_images)}",
     ]
     if tsv_files:
         lines.append("Generated files:")
