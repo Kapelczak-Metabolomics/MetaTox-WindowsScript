@@ -215,6 +215,10 @@ run_with_spinner() {
 
 work_dir="${PWD}"
 
+# Do not bind the full /app tree into nested Singularity images: it hides
+# scripts shipped inside GLORYx/MetaTrans containers (e.g. gloryx_api.py).
+unset APPTAINER_BINDPATH SINGULARITY_BINDPATH
+
 tmp="${work_dir}/tmp/"
 if test -d $tmp; then
   rm -r $tmp
@@ -502,7 +506,8 @@ do
         set -e
         set -o pipefail
 
-        singularity exec https://depot.galaxyproject.org/singularity/biotransformer:3.0.20230403--hdfd78af_0 biotransformer \
+        singularity exec -B "${tmp}:${tmp}" \
+        https://depot.galaxyproject.org/singularity/biotransformer:3.0.20230403--hdfd78af_0 biotransformer \
         -b "${type}" \
         -k "pred" \
         -cm "${cmode}" \
@@ -547,7 +552,7 @@ do
 
     gloryx_job () {
         set -e
-        singularity run library://abourdais/default/gloryx_api \
+        singularity run -B "${tmp}:${tmp}" library://abourdais/default/gloryx_api \
         --phase $phase_gloryx \
         --smile ${tab_smiles[${indice}]} \
         --output ${tmp}${tab_molecule[${indice}]}_Gloryx.csv \

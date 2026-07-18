@@ -12,7 +12,6 @@ services:
       METATOX_VERBOSE: "true"
       METATOX_NATIVE_COMPILE: "true"
       METATOX_PREFETCH_IMAGES: "${METATOX_PREFETCH_IMAGES:-false}"
-      APPTAINER_BINDPATH: "/app"
       APPTAINER_NO_MOUNT: "/etc/localtime"
       SINGULARITY_NO_MOUNT: "/etc/localtime"
       APPTAINER_TMPDIR: "/tmp/apptainer"

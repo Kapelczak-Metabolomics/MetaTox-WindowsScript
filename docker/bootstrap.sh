@@ -7,7 +7,6 @@ CACHE_DIR="${SINGULARITY_CACHEDIR:-/var/lib/metatox/singularity-cache}"
 mkdir -p "${CACHE_DIR}" "${APP_ROOT}/data/input" "${APP_ROOT}/data/output" "${APP_ROOT}/log" /tmp
 export SINGULARITY_CACHEDIR="${CACHE_DIR}"
 export APPTAINER_CACHEDIR="${CACHE_DIR}"
-export APPTAINER_BINDPATH="${APPTAINER_BINDPATH:-/app}"
 export APPTAINER_NO_MOUNT="${APPTAINER_NO_MOUNT:-/etc/localtime}"
 export SINGULARITY_NO_MOUNT="${SINGULARITY_NO_MOUNT:-/etc/localtime}"
 export APPTAINER_TMPDIR="${APPTAINER_TMPDIR:-/tmp/apptainer}"

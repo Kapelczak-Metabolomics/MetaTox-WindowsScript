@@ -7,7 +7,6 @@ ENV DEBIAN_FRONTEND=noninteractive \
     METATOX_NATIVE_COMPILE=true \
     SINGULARITY_CACHEDIR=/var/lib/metatox/singularity-cache \
     APPTAINER_CACHEDIR=/var/lib/metatox/singularity-cache \
-    APPTAINER_BINDPATH=/app \
     APPTAINER_NO_MOUNT=/etc/localtime \
     SINGULARITY_NO_MOUNT=/etc/localtime \
     APPTAINER_TMPDIR=/tmp/apptainer \

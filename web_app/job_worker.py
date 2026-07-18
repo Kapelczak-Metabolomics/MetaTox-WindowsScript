@@ -14,7 +14,8 @@ from pipeline import run_pipeline, summarize_outputs, zip_output_directory
 def _configure_runtime() -> None:
     os.environ.setdefault("METATOX_VERBOSE", "true")
     os.environ.setdefault("METATOX_NATIVE_COMPILE", "true")
-    os.environ.setdefault("APPTAINER_BINDPATH", os.environ.get("APP_ROOT", "/app"))
+    os.environ.pop("APPTAINER_BINDPATH", None)
+    os.environ.pop("SINGULARITY_BINDPATH", None)
     os.environ.setdefault("APPTAINER_NO_MOUNT", "/etc/localtime")
     os.environ.setdefault("SINGULARITY_NO_MOUNT", "/etc/localtime")
     os.environ.setdefault("APPTAINER_TMPDIR", "/tmp/apptainer")
