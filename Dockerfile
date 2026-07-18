@@ -10,6 +10,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     APPTAINER_BINDPATH=/app \
     APPTAINER_NO_MOUNT=/etc/localtime \
     SINGULARITY_NO_MOUNT=/etc/localtime \
+    APPTAINER_TMPDIR=/tmp/apptainer \
+    SINGULARITY_TMPDIR=/tmp/apptainer \
     TMPDIR=/tmp \
     MPLBACKEND=Agg
 
@@ -52,8 +54,8 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt -r /tmp/requirements-co
 COPY . /app
 
 RUN find /app -type f -name "*.sh" -print -exec dos2unix {} + \
-    && chmod +x /app/Metatox.sh /app/docker/entrypoint.sh /app/docker/bootstrap.sh \
-    && mkdir -p /app/data/input /app/data/output /app/log /var/lib/metatox/singularity-cache
+    && chmod +x /app/Metatox.sh /app/docker/entrypoint.sh /app/docker/bootstrap.sh /app/web_app/job_worker.py \
+    && mkdir -p /app/data/input /app/data/output /app/data/job /app/log /var/lib/metatox/singularity-cache /tmp/apptainer
 
 EXPOSE 8501
 

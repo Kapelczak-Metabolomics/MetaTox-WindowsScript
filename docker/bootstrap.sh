@@ -10,7 +10,10 @@ export APPTAINER_CACHEDIR="${CACHE_DIR}"
 export APPTAINER_BINDPATH="${APPTAINER_BINDPATH:-/app}"
 export APPTAINER_NO_MOUNT="${APPTAINER_NO_MOUNT:-/etc/localtime}"
 export SINGULARITY_NO_MOUNT="${SINGULARITY_NO_MOUNT:-/etc/localtime}"
+export APPTAINER_TMPDIR="${APPTAINER_TMPDIR:-/tmp/apptainer}"
+export SINGULARITY_TMPDIR="${SINGULARITY_TMPDIR:-/tmp/apptainer}"
 export TMPDIR="${TMPDIR:-/tmp}"
+mkdir -p "${APPTAINER_TMPDIR}" "${APP_ROOT}/data/job"
 
 if [ ! -e /etc/localtime ] && [ -f /usr/share/zoneinfo/UTC ]; then
   ln -sf /usr/share/zoneinfo/UTC /etc/localtime
@@ -34,15 +37,31 @@ fi
 
 chmod +x "${APP_ROOT}/Metatox.sh"
 
+pull_image() {
+  local label="$1"
+  shift
+  echo "  Pulling ${label}..."
+  if singularity pull -F "$@"; then
+    echo "  OK: ${label}"
+    return 0
+  fi
+  echo "  WARNING: failed to prefetch ${label}"
+  return 1
+}
+
 if [[ "${METATOX_PREFETCH_IMAGES:-false}" == "true" ]]; then
   echo "Prefetching Singularity images (this can take several minutes)..."
-  singularity pull -F docker://3dechem/sygma >/dev/null 2>&1 || true
-  singularity pull -F \
+  prefetch_failures=0
+  pull_image "SygMa" docker://3dechem/sygma || prefetch_failures=$((prefetch_failures + 1))
+  pull_image "BioTransformer" \
     https://depot.galaxyproject.org/singularity/biotransformer:3.0.20230403--hdfd78af_0 \
-    >/dev/null 2>&1 || true
-  singularity pull -F library://abourdais/default/rdkit >/dev/null 2>&1 || true
-  singularity pull -F library://abourdais/default/gloryx_api >/dev/null 2>&1 || true
-  singularity pull -F library://abourdais/default/metatrans >/dev/null 2>&1 || true
+    || prefetch_failures=$((prefetch_failures + 1))
+  pull_image "RDKit" library://abourdais/default/rdkit || prefetch_failures=$((prefetch_failures + 1))
+  pull_image "GLORYx" library://abourdais/default/gloryx_api || prefetch_failures=$((prefetch_failures + 1))
+  pull_image "MetaTrans" library://abourdais/default/metatrans || prefetch_failures=$((prefetch_failures + 1))
+  if [ "${prefetch_failures}" -gt 0 ]; then
+    echo "WARNING: ${prefetch_failures} image(s) failed to prefetch. They will download on first use."
+  fi
 fi
 
 echo "MetaTox container bootstrap complete."

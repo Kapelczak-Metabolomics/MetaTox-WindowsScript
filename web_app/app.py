@@ -2,20 +2,17 @@
 
 from __future__ import annotations
 
-import threading
 from pathlib import Path
-from typing import Any, Dict
 
 from flask import Flask, jsonify, render_template, request, send_file
 
+from job_store import JobStore
 from pipeline import (
     PipelineOptions,
     check_environment,
     get_work_dir,
     metapredictor_is_available,
-    run_pipeline,
     sanitize_filename,
-    summarize_outputs,
     validate_input_file,
     zip_output_directory,
 )
@@ -39,38 +36,17 @@ GLORYX_OPTIONS = {
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
-
-_job_lock = threading.Lock()
-_cancel_event = threading.Event()
-_job_state: Dict[str, Any] = {
-    "running": False,
-    "logs": [],
-    "output_dir": None,
-    "zip_path": None,
-    "zip_ready": False,
-    "zip_name": None,
-    "summary": None,
-    "error": None,
-}
+_job_store: JobStore | None = None
 
 
-def _reset_job_state() -> None:
-    _job_state["running"] = False
-    _job_state["logs"] = []
-    _job_state["output_dir"] = None
-    _job_state["zip_path"] = None
-    _job_state["zip_ready"] = False
-    _job_state["zip_name"] = None
-    _job_state["summary"] = None
-    _job_state["error"] = None
+def get_job_store() -> JobStore:
+    global _job_store
+    if _job_store is None:
+        _job_store = JobStore()
+    return _job_store
 
 
-def _append_log(message: str) -> None:
-    with _job_lock:
-        _job_state["logs"].append(message)
-
-
-def _environment_payload() -> Dict[str, Any]:
+def _environment_payload():
     status = check_environment()
     return {
         "singularity_available": status.singularity_available,
@@ -134,31 +110,6 @@ def _build_options(form, input_path: Path) -> PipelineOptions:
     )
 
 
-def _run_job(options: PipelineOptions) -> None:
-    try:
-        output_dir = run_pipeline(
-            options,
-            log_callback=_append_log,
-            cancel_event=_cancel_event,
-        )
-        zip_path = zip_output_directory(output_dir)
-        with _job_lock:
-            _job_state["output_dir"] = str(output_dir)
-            _job_state["zip_path"] = str(zip_path)
-            _job_state["zip_ready"] = zip_path.is_file() and zip_path.stat().st_size > 0
-            _job_state["zip_name"] = zip_path.name
-            _job_state["summary"] = summarize_outputs(output_dir)
-        _append_log(f"Results archive: {zip_path} ({zip_path.stat().st_size} bytes)")
-    except Exception as exc:  # noqa: BLE001
-        _append_log("")
-        _append_log(f"ERROR: {exc}")
-        with _job_lock:
-            _job_state["error"] = str(exc)
-    finally:
-        with _job_lock:
-            _job_state["running"] = False
-
-
 @app.get("/")
 def index():
     env = _environment_payload()
@@ -184,26 +135,14 @@ def environment():
 
 @app.get("/api/job")
 def job_status():
-    with _job_lock:
-        return jsonify(
-            {
-                "running": _job_state["running"],
-                "logs": list(_job_state["logs"]),
-                "output_dir": _job_state["output_dir"],
-                "zip_path": _job_state["zip_path"],
-                "zip_name": _job_state["zip_name"],
-                "zip_ready": _job_state["zip_ready"],
-                "summary": _job_state["summary"],
-                "error": _job_state["error"],
-            }
-        )
+    return jsonify(get_job_store().snapshot_for_api())
 
 
 @app.post("/api/run")
 def start_run():
-    with _job_lock:
-        if _job_state["running"]:
-            return jsonify({"error": "A prediction is already running."}), 409
+    snapshot = get_job_store().read_state()
+    if snapshot.running or get_job_store().request_path.is_file():
+        return jsonify({"error": "A prediction is already running."}), 409
 
     env = check_environment()
     if env.issues:
@@ -225,31 +164,26 @@ def start_run():
             }
         ), 400
 
-    _cancel_event.clear()
-    with _job_lock:
-        _reset_job_state()
-        _job_state["running"] = True
-
-    worker = threading.Thread(target=_run_job, args=(options,), daemon=True)
-    worker.start()
+    get_job_store().reset_for_run()
+    get_job_store().submit_request(options)
     return jsonify({"status": "started"})
 
 
 @app.post("/api/cancel")
 def cancel_run():
-    if not _job_state["running"]:
+    snapshot = get_job_store().read_state()
+    if not snapshot.running:
         return jsonify({"status": "idle"})
-    _cancel_event.set()
+    get_job_store().request_cancel()
     return jsonify({"status": "cancelling"})
 
 
 @app.get("/api/download")
 def download_results():
-    zip_path_value = _job_state.get("zip_path")
-    output_dir_value = _job_state.get("output_dir")
+    snapshot = get_job_store().read_state()
 
-    if zip_path_value:
-        zip_path = Path(zip_path_value)
+    if snapshot.zip_path:
+        zip_path = Path(snapshot.zip_path)
         if zip_path.is_file() and zip_path.stat().st_size > 0:
             return send_file(
                 zip_path,
@@ -258,14 +192,15 @@ def download_results():
                 mimetype="application/zip",
             )
 
-    if output_dir_value:
-        output_dir = Path(output_dir_value)
+    if snapshot.output_dir:
+        output_dir = Path(snapshot.output_dir)
         if output_dir.is_dir() and list(output_dir.glob("*_CompileResults.tsv")):
             zip_path = zip_output_directory(output_dir)
-            with _job_lock:
-                _job_state["zip_path"] = str(zip_path)
-                _job_state["zip_ready"] = True
-                _job_state["zip_name"] = zip_path.name
+            get_job_store().update_state(
+                zip_path=str(zip_path),
+                zip_ready=True,
+                zip_name=zip_path.name,
+            )
             return send_file(
                 zip_path,
                 as_attachment=True,

@@ -175,6 +175,8 @@ def run_pipeline(
     run_env.setdefault("APPTAINER_BINDPATH", str(work_dir))
     run_env.setdefault("APPTAINER_NO_MOUNT", "/etc/localtime")
     run_env.setdefault("SINGULARITY_NO_MOUNT", "/etc/localtime")
+    run_env.setdefault("APPTAINER_TMPDIR", "/tmp/apptainer")
+    run_env.setdefault("SINGULARITY_TMPDIR", "/tmp/apptainer")
 
     process = subprocess.Popen(
         command,
