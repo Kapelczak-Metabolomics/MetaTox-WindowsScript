@@ -27,6 +27,7 @@ class PipelineOptions:
     phase_gloryx: str = "phase_1_and_2"
     predictor_activate: bool = False
     keep_tmp: bool = False
+    export_elmaven: bool = False
     work_dir: Optional[Path] = None
 
 
@@ -245,6 +246,9 @@ def summarize_outputs(output_dir: Path) -> str:
         lines.extend(f"  - {path.name}" for path in tsv_files[:10])
         if len(tsv_files) > 10:
             lines.append(f"  ... and {len(tsv_files) - 10} more")
+    elmaven_file = output_dir / "MetaTox_elmaven_knowns.csv"
+    if elmaven_file.is_file():
+        lines.append(f"El-MAVEN knowns list: {elmaven_file.name}")
     return "\n".join(lines)
 
 

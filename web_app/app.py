@@ -19,6 +19,7 @@ from pipeline import (
     validate_input_file,
     zip_output_directory,
 )
+from elmaven_export import ELMAVEN_FILENAME, elmaven_knowns_path, export_elmaven_knowns
 from results_viewer import load_results_for_viewer, resolve_iupac_for_smiles, resolve_result_image
 
 
@@ -111,6 +112,7 @@ def _build_options(form, input_path: Path) -> PipelineOptions:
         phase_gloryx=form.get("phase_gloryx") or "phase_1_and_2",
         predictor_activate=form.get("predictor_activate") == "true",
         keep_tmp=form.get("keep_tmp") == "true",
+        export_elmaven=form.get("export_elmaven") == "true",
     )
 
 
@@ -288,6 +290,27 @@ def results_iupac_api():
 
     names = resolve_iupac_for_smiles(output_dir, cleaned)
     return jsonify({"names": names})
+
+
+@app.get("/api/results/elmaven")
+def download_elmaven_knowns():
+    output_dir = _output_dir_from_request()
+    if not output_dir:
+        return jsonify({"error": "No output directory is available."}), 404
+
+    elmaven_path = elmaven_knowns_path(output_dir)
+    if not elmaven_path.is_file():
+        try:
+            elmaven_path = export_elmaven_knowns(output_dir)
+        except Exception as exc:  # noqa: BLE001
+            return jsonify({"error": str(exc)}), 404
+
+    return send_file(
+        elmaven_path,
+        as_attachment=True,
+        download_name=elmaven_path.name,
+        mimetype="text/csv",
+    )
 
 
 @app.get("/api/results/image/<molecule_id>/<path:image_name>")
