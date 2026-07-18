@@ -3,8 +3,12 @@ FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive \
     APP_ROOT=/app \
     METATOX_PORT=8501 \
+    METATOX_VERBOSE=true \
+    METATOX_NATIVE_COMPILE=true \
     SINGULARITY_CACHEDIR=/var/lib/metatox/singularity-cache \
-    APPTAINER_CACHEDIR=/var/lib/metatox/singularity-cache
+    APPTAINER_CACHEDIR=/var/lib/metatox/singularity-cache \
+    APPTAINER_BINDPATH=/app \
+    TMPDIR=/tmp
 
 WORKDIR /app
 
@@ -33,7 +37,8 @@ RUN wget -q "https://github.com/apptainer/apptainer/releases/download/v${APPTAIN
     && ln -sf /usr/bin/apptainer /usr/local/bin/singularity
 
 COPY web_app/requirements.txt /tmp/requirements.txt
-RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
+COPY docker/requirements-companion.txt /tmp/requirements-companion.txt
+RUN pip3 install --no-cache-dir -r /tmp/requirements.txt -r /tmp/requirements-companion.txt
 
 COPY . /app
 

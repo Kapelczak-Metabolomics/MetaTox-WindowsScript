@@ -169,9 +169,15 @@ def run_pipeline(
     emit("Command: " + " ".join(command))
     emit("")
 
+    run_env = os.environ.copy()
+    run_env.setdefault("METATOX_VERBOSE", "true")
+    run_env.setdefault("METATOX_NATIVE_COMPILE", "true")
+    run_env.setdefault("APPTAINER_BINDPATH", str(work_dir))
+
     process = subprocess.Popen(
         command,
         cwd=work_dir,
+        env=run_env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,

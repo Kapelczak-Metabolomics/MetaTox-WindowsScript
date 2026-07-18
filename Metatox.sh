@@ -157,6 +157,7 @@ spinner() {
     local msg=$2
     local delay=0.1
     local spinstr='|/-\'
+    local exit_code=0
 
     while kill -0 $pid 2>/dev/null; do
         local temp=${spinstr#?}
@@ -166,19 +167,46 @@ spinner() {
     done
 
     wait $pid 2>/dev/null
-    if [ $? -eq 0 ]; then
+    exit_code=$?
+    if [ $exit_code -eq 0 ]; then
         printf "\r%s done ✓    \n" "$msg"
     else
         printf "\r%s failed ✗   \n" "$msg"
     fi
+    return $exit_code
+}
+
+log_step_failure() {
+    local label="$1"
+    shift
+    echo ""
+    echo "ERROR: ${label}"
+    for log_file in "$@"; do
+        if [ -f "${log_file}" ]; then
+            echo "----- ${log_file} (last 60 lines) -----"
+            tail -n 60 "${log_file}"
+        fi
+    done
+    echo ""
 }
 
 run_with_spinner() {
     local msg=$1
+    local exit_code=0
     shift
+
+    if [ "${METATOX_VERBOSE:-false}" = "true" ]; then
+        echo ""
+        echo ">>> ${msg}"
+        "$@" || exit_code=$?
+        echo ""
+        return $exit_code
+    fi
+
     ( "$@" ) >/dev/null 2>&1 &
     local pid=$!
-    spinner $pid "$msg"
+    spinner $pid "$msg" || exit_code=$?
+    return $exit_code
 }
 
 ######################
@@ -451,6 +479,8 @@ fi
 ### Main loop ###
 #################
 
+step_failures=0
+
 for indice in ${!tab_molecule[@]}
 do
 
@@ -469,60 +499,72 @@ do
     #########################
 
     biotransformer_job () {
+        set -e
+        set -o pipefail
 
         singularity exec https://depot.galaxyproject.org/singularity/biotransformer:3.0.20230403--hdfd78af_0 biotransformer \
         -b "${type}" \
         -k "pred" \
-        -cm 3 \
+        -cm "${cmode}" \
         -s "${nstep}" \
         -ismi "${tab_smiles[${indice}]}" \
         -ocsv "${tmp}${tab_molecule[${indice}]}_Biotransformer3_v1.csv" 2>&1 | tee -a "${log}${tab_molecule[${indice}]}_Biotransformer3_log.txt"
 
-        #Changement csv format
         singularity exec -B ${tmp}:/tmp library://abourdais/default/rdkit csvformat \
         -D ";" "${tmp}${tab_molecule[${indice}]}_Biotransformer3_v1.csv" \
         | gawk -v RS='"' 'NR % 2 == 0 { gsub(/\n/, "") } { printf("%s%s", $0, RT) }' \
         > "${tmp}${tab_molecule[${indice}]}_Biotransformer3.csv"
-        
+
         rm ${tmp}${tab_molecule[${indice}]}_Biotransformer3_v1.csv
     }
 
-    run_with_spinner "Biotransformer3 ..." biotransformer_job
+    if ! run_with_spinner "Biotransformer3 ..." biotransformer_job; then
+        step_failures=$((step_failures + 1))
+        log_step_failure "Biotransformer3 failed" \
+            "${log}${tab_molecule[${indice}]}_Biotransformer3_log.txt"
+    fi
 
     ##################
     ###    SygMa   ###
     ##################
 
     sygma_job () {
-
+        set -e
         singularity run docker://3dechem/sygma ${tab_smiles[${indice}]} \
         -1 $phase1 \
         -2 $phase2 \
-        >> "${tmp}${tab_molecule[${indice}]}_Sygma.sdf"
+        >> "${tmp}${tab_molecule[${indice}]}_Sygma.sdf" 2>> "${log}${tab_molecule[${indice}]}_Sygma_log.txt"
     }
 
-    run_with_spinner "Sygma ..." sygma_job
+    if ! run_with_spinner "Sygma ..." sygma_job; then
+        step_failures=$((step_failures + 1))
+        log_step_failure "SygMa failed" "${log}${tab_molecule[${indice}]}_Sygma_log.txt"
+    fi
 
     ###################
     ###    GloryX   ### !!! TO DO !!!
     ###################
 
     gloryx_job () {
-
+        set -e
         singularity run library://abourdais/default/gloryx_api \
         --phase $phase_gloryx \
         --smile ${tab_smiles[${indice}]} \
-        --output ${tmp}${tab_molecule[${indice}]}_Gloryx.csv
+        --output ${tmp}${tab_molecule[${indice}]}_Gloryx.csv \
+        > "${log}${tab_molecule[${indice}]}_Gloryx_log.txt" 2>&1
     }
 
-    run_with_spinner "GloryX ..." gloryx_job
+    if ! run_with_spinner "GloryX ..." gloryx_job; then
+        step_failures=$((step_failures + 1))
+        log_step_failure "GLORYx failed" "${log}${tab_molecule[${indice}]}_Gloryx_log.txt"
+    fi
 
     ##################
     ### META-TRANS ###
     ##################
 
     metatrans_job () {
-
+        set -e
         singularity run --containall -B ${tmp}:/tmp --writable-tmpfs library://abourdais/default/metatrans \
         -n ${tab_molecule[${indice}]} \
         -s ${tab_smiles[${indice}]} \
@@ -533,29 +575,48 @@ do
         rm -rf ${tmp}Predictions
     }
 
-    run_with_spinner "MetaTrans ..." metatrans_job
+    if ! run_with_spinner "MetaTrans ..." metatrans_job; then
+        step_failures=$((step_failures + 1))
+        log_step_failure "MetaTrans failed" "${log}${tab_molecule[${indice}]}_MetaTrans_log.txt"
+    fi
 
     ###################
     ### Compilation ###
     ###################
 
     compilation_job () {
-
-        singularity exec -B ${DirScripts}:/tmp library://abourdais/default/rdkit python ${Script_Metatox_Companion} \
-            --biotrans "${tmp}${tab_molecule[${indice}]}_Biotransformer3.csv" \
-            --sygma "${tmp}${tab_molecule[${indice}]}_Sygma.sdf" \
-            --metapred "${tmp}${tab_molecule[${indice}]}_Metapred.csv" \
-            --metatrans "${tmp}${tab_molecule[${indice}]}_MetaTrans.csv" \
-            --gloryx "${tmp}${tab_molecule[${indice}]}_Gloryx.csv" \
-            --output "${results_file}" \
-            --figure "${tmp}${tab_molecule[${indice}]}_ListeSmile.txt" \
-            --dirfig "${results_figure}" \
-            > "${log}${tab_molecule[${indice}]}_Compagnion_log.txt" 2>&1
+        set -e
+        if [ "${METATOX_NATIVE_COMPILE:-false}" = "true" ]; then
+            python3 ${Script_Metatox_Companion} \
+                --biotrans "${tmp}${tab_molecule[${indice}]}_Biotransformer3.csv" \
+                --sygma "${tmp}${tab_molecule[${indice}]}_Sygma.sdf" \
+                --metapred "${tmp}${tab_molecule[${indice}]}_Metapred.csv" \
+                --metatrans "${tmp}${tab_molecule[${indice}]}_MetaTrans.csv" \
+                --gloryx "${tmp}${tab_molecule[${indice}]}_Gloryx.csv" \
+                --output "${results_file}" \
+                --figure "${tmp}${tab_molecule[${indice}]}_ListeSmile.txt" \
+                --dirfig "${results_figure}" \
+                > "${log}${tab_molecule[${indice}]}_Compagnion_log.txt" 2>&1
+        else
+            singularity exec -B ${DirScripts}:/tmp library://abourdais/default/rdkit python ${Script_Metatox_Companion} \
+                --biotrans "${tmp}${tab_molecule[${indice}]}_Biotransformer3.csv" \
+                --sygma "${tmp}${tab_molecule[${indice}]}_Sygma.sdf" \
+                --metapred "${tmp}${tab_molecule[${indice}]}_Metapred.csv" \
+                --metatrans "${tmp}${tab_molecule[${indice}]}_MetaTrans.csv" \
+                --gloryx "${tmp}${tab_molecule[${indice}]}_Gloryx.csv" \
+                --output "${results_file}" \
+                --figure "${tmp}${tab_molecule[${indice}]}_ListeSmile.txt" \
+                --dirfig "${results_figure}" \
+                > "${log}${tab_molecule[${indice}]}_Compagnion_log.txt" 2>&1
+        fi
 
         rm ${tmp}${tab_molecule[${indice}]}_ListeSmile.txt
     }
 
-    run_with_spinner "Compilation ..." compilation_job
+    if ! run_with_spinner "Compilation ..." compilation_job; then
+        step_failures=$((step_failures + 1))
+        log_step_failure "Compilation failed" "${log}${tab_molecule[${indice}]}_Compagnion_log.txt"
+    fi
 
 done
 

@@ -134,6 +134,24 @@ Rebuild with the latest image. The container installs the `file` package and `Me
 
 Meta-Predictor is not included in the default Docker image. Leave it **disabled** in the sidebar unless you install Conda, CUDA, and the Meta-Predictor repository (see optional setup above).
 
+### Singularity steps fail inside Docker
+
+1. Rebuild with verbose logging enabled (default in the latest image):
+   ```bash
+   docker compose down
+   docker compose build --no-cache
+   METATOX_PREFETCH_IMAGES=true docker compose up
+   ```
+2. Check the **Pipeline log** panel for detailed Apptainer errors after each step.
+3. Ensure Docker Desktop has enough RAM (8 GB+) and disk space for image downloads.
+4. The container must run with `privileged: true` (already set in `docker-compose.yml`).
+
+If BioTransformer, SygMa, or GLORYx fail but MetaTrans succeeds, inspect files in `log/` inside the container:
+```bash
+docker compose exec metatox ls -la /app/log
+docker compose exec metatox tail -n 80 /app/log/JNJ-40418677_Biotransformer3_log.txt
+```
+
 ### Predictions are slow the first time
 
 - Expected: Singularity images are downloaded on demand

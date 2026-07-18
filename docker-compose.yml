@@ -9,7 +9,11 @@ services:
       - "${METATOX_PORT:-8501}:8501"
     environment:
       METATOX_PORT: "8501"
+      METATOX_VERBOSE: "true"
+      METATOX_NATIVE_COMPILE: "true"
       METATOX_PREFETCH_IMAGES: "${METATOX_PREFETCH_IMAGES:-false}"
+      APPTAINER_BINDPATH: "/app"
+      TMPDIR: "/tmp"
     volumes:
       - ./data/input:/app/data/input
       - ./data/output:/app/Results_Prediction
