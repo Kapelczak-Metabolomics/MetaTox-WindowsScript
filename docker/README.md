@@ -126,6 +126,14 @@ docker compose up
 
 The Dockerfile now converts all `*.sh` files to Unix line endings during the build.
 
+### `file: command not found`
+
+Rebuild with the latest image. The container installs the `file` package and `Metatox.sh` falls back to `dos2unix` when `file` is unavailable.
+
+### Meta-Predictor failed
+
+Meta-Predictor is not included in the default Docker image. Leave it **disabled** in the sidebar unless you install Conda, CUDA, and the Meta-Predictor repository (see optional setup above).
+
 ### Predictions are slow the first time
 
 - Expected: Singularity images are downloaded on demand

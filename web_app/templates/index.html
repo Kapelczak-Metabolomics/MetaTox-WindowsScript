@@ -64,9 +64,18 @@
         </div>
 
         <div class="space-y-3 rounded-xl bg-slate-50 p-4">
-          <label class="flex items-start gap-3">
-            <input id="predictor_activate" name="predictor_activate" type="checkbox" value="true" class="mt-1 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500">
-            <span class="text-sm text-slate-700">Enable Meta-Predictor <span class="block text-slate-500">Requires CUDA setup inside the container</span></span>
+          <label class="flex items-start gap-3 {% if not env_status.metapredictor_available %}opacity-60{% endif %}">
+            <input id="predictor_activate" name="predictor_activate" type="checkbox" value="true" class="mt-1 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500" {% if not env_status.metapredictor_available %}disabled{% endif %}>
+            <span class="text-sm text-slate-700">
+              Enable Meta-Predictor
+              <span class="block text-slate-500">
+                {% if env_status.metapredictor_available %}
+                Requires CUDA setup inside the container
+                {% else %}
+                Not installed in this container (leave disabled)
+                {% endif %}
+              </span>
+            </span>
           </label>
           <label class="flex items-center gap-3">
             <input id="keep_tmp" name="keep_tmp" type="checkbox" value="true" class="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500">
@@ -173,7 +182,7 @@
         </div>
 
         <div id="environment-panel" class="hidden" role="tabpanel">
-          <div class="mb-6 grid gap-4 sm:grid-cols-3">
+          <div class="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div class="rounded-xl border border-slate-200 p-4">
               <p class="text-sm text-slate-500">Singularity/Apptainer</p>
               <p class="mt-1 text-lg font-semibold {% if env_status.singularity_available %}text-green-600{% else %}text-red-600{% endif %}">
@@ -184,6 +193,12 @@
               <p class="text-sm text-slate-500">Metatox.sh</p>
               <p class="mt-1 text-lg font-semibold {% if env_status.metatox_script_found %}text-green-600{% else %}text-red-600{% endif %}">
                 {% if env_status.metatox_script_found %}Found{% else %}Missing{% endif %}
+              </p>
+            </div>
+            <div class="rounded-xl border border-slate-200 p-4">
+              <p class="text-sm text-slate-500">Meta-Predictor</p>
+              <p class="mt-1 text-lg font-semibold {% if env_status.metapredictor_available %}text-green-600{% else %}text-amber-600{% endif %}">
+                {% if env_status.metapredictor_available %}Installed{% else %}Not installed{% endif %}
               </p>
             </div>
             <div class="rounded-xl border border-slate-200 p-4">

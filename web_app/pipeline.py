@@ -34,6 +34,7 @@ class PipelineOptions:
 class EnvironmentStatus:
     singularity_available: bool
     metatox_script_found: bool
+    metapredictor_available: bool
     work_dir: Path
     issues: List[str]
     notes: List[str]
@@ -41,6 +42,12 @@ class EnvironmentStatus:
 
 def get_work_dir() -> Path:
     return Path(os.environ.get("APP_ROOT", "/app")).resolve()
+
+
+def metapredictor_is_available(work_dir: Optional[Path] = None) -> bool:
+    root = work_dir or get_work_dir()
+    predictor_script = root / "Meta-Predictor" / "predict-top15.sh"
+    return predictor_script.is_file() and bool(shutil.which("conda"))
 
 
 def check_environment() -> EnvironmentStatus:
@@ -58,12 +65,20 @@ def check_environment() -> EnvironmentStatus:
     if not script.is_file():
         issues.append(f"Metatox.sh was not found in {work_dir}.")
 
+    predictor_ready = metapredictor_is_available(work_dir)
+    if not predictor_ready:
+        notes.append(
+            "Meta-Predictor is not installed in this container. "
+            "Leave it disabled unless you add the Meta-Predictor repository and Conda."
+        )
+
     if not issues:
         notes.append("The web UI will run predictions through the bundled Metatox.sh pipeline.")
 
     return EnvironmentStatus(
         singularity_available=bool(singularity),
         metatox_script_found=script.is_file(),
+        metapredictor_available=predictor_ready,
         work_dir=work_dir,
         issues=issues,
         notes=notes,

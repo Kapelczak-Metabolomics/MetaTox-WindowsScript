@@ -361,7 +361,11 @@ echo "
 ###  Input  ###
 ###############
 
-file $input | grep CRLF && dos2unix $input
+if command -v file >/dev/null 2>&1; then
+    file "$input" | grep -q CRLF && dos2unix "$input"
+else
+    dos2unix -q "$input" 2>/dev/null || true
+fi
 
 declare -a tab_molecule
 declare -a tab_smiles

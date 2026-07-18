@@ -12,6 +12,7 @@ from pipeline import (
     PipelineOptions,
     check_environment,
     get_work_dir,
+    metapredictor_is_available,
     run_pipeline,
     sanitize_filename,
     summarize_outputs,
@@ -70,6 +71,7 @@ def _environment_payload() -> Dict[str, Any]:
     return {
         "singularity_available": status.singularity_available,
         "metatox_script_found": status.metatox_script_found,
+        "metapredictor_available": status.metapredictor_available,
         "work_dir": str(status.work_dir),
         "issues": status.issues,
         "notes": status.notes,
@@ -204,6 +206,16 @@ def start_run():
         options = _build_options(request.form, input_path)
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": str(exc)}), 400
+
+    if options.predictor_activate and not metapredictor_is_available():
+        return jsonify(
+            {
+                "error": (
+                    "Meta-Predictor is not installed in this container. "
+                    "Disable Meta-Predictor or follow docker/README.md to add it."
+                )
+            }
+        ), 400
 
     _cancel_event.clear()
     with _job_lock:
