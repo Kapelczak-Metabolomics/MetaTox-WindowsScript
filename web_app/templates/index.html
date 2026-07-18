@@ -81,6 +81,13 @@
             <input id="keep_tmp" name="keep_tmp" type="checkbox" value="true" class="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500">
             <span class="text-sm text-slate-700">Keep intermediate files</span>
           </label>
+          <label class="flex items-start gap-3">
+            <input id="export_elmaven" name="export_elmaven" type="checkbox" value="true" class="mt-1 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500">
+            <span class="text-sm text-slate-700">
+              Export El-MAVEN knowns list
+              <span class="block text-slate-500">Write a Maven/El-MAVEN knowns CSV with compound names and formulas for all predicted products.</span>
+            </span>
+          </label>
           {% if example_available %}
           <label class="flex items-center gap-3">
             <input id="use_example" name="use_example" type="checkbox" value="true" class="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500">
@@ -178,9 +185,14 @@
               <p class="font-medium">Prediction completed</p>
               <pre id="results-summary" class="mt-2 whitespace-pre-wrap text-sm text-green-900"></pre>
             </div>
-            <a id="download-link" href="/api/download" class="inline-flex items-center rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-700">
-              Download results (.zip)
-            </a>
+            <div class="flex flex-wrap gap-3">
+              <a id="download-link" href="/api/download" class="inline-flex items-center rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-700">
+                Download results (.zip)
+              </a>
+              <a id="elmaven-download-link" href="/api/results/elmaven" class="hidden inline-flex items-center rounded-lg border border-brand-600 bg-white px-5 py-2.5 text-sm font-medium text-brand-700 hover:bg-brand-50">
+                Download El-MAVEN knowns (.csv)
+              </a>
+            </div>
           </div>
         </div>
 

@@ -7,6 +7,7 @@ import os
 import sys
 import time
 
+from elmaven_export import ELMAVEN_FILENAME, export_elmaven_knowns
 from job_store import JobCancelMonitor, JobStore
 from pipeline import run_pipeline, summarize_outputs, zip_output_directory
 
@@ -49,6 +50,9 @@ def run_once(store: JobStore) -> bool:
             log_callback=log_callback,
             cancel_event=cancel_event,
         )
+        if options.export_elmaven:
+            elmaven_path = export_elmaven_knowns(output_dir)
+            store.append_log(f"El-MAVEN knowns list: {elmaven_path}")
         zip_path = zip_output_directory(output_dir)
         store.update_state(
             running=False,

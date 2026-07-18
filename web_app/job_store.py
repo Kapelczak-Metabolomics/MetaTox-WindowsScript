@@ -184,5 +184,6 @@ def options_from_dict(payload: Dict[str, Any]) -> PipelineOptions:
         phase_gloryx=payload.get("phase_gloryx", "phase_1_and_2"),
         predictor_activate=bool(payload.get("predictor_activate", False)),
         keep_tmp=bool(payload.get("keep_tmp", False)),
+        export_elmaven=bool(payload.get("export_elmaven", False)),
         work_dir=Path(work_dir) if work_dir else None,
     )

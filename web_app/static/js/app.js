@@ -13,6 +13,7 @@ const resultsEmpty = document.getElementById("results-empty");
 const resultsContent = document.getElementById("results-content");
 const resultsSummary = document.getElementById("results-summary");
 const downloadLink = document.getElementById("download-link");
+const elmavenDownloadLink = document.getElementById("elmaven-download-link");
 const viewerEmpty = document.getElementById("viewer-empty");
 const viewerContent = document.getElementById("viewer-content");
 const viewerResultSet = document.getElementById("viewer-result-set");
@@ -92,6 +93,13 @@ function updateResults(data) {
       downloadLink.setAttribute("aria-disabled", "false");
     } else {
       downloadLink.classList.add("hidden");
+    }
+    if (data.summary.includes("El-MAVEN knowns list:")) {
+      const elmavenUrl = `/api/results/elmaven?output_dir=${encodeURIComponent(data.output_dir)}`;
+      elmavenDownloadLink.href = elmavenUrl;
+      elmavenDownloadLink.classList.remove("hidden");
+    } else {
+      elmavenDownloadLink.classList.add("hidden");
     }
     viewerSourceLabel = "";
     loadViewerData(data.output_dir);
@@ -506,6 +514,7 @@ async function startRun() {
 
   formData.set("predictor_activate", document.getElementById("predictor_activate").checked ? "true" : "false");
   formData.set("keep_tmp", document.getElementById("keep_tmp").checked ? "true" : "false");
+  formData.set("export_elmaven", document.getElementById("export_elmaven").checked ? "true" : "false");
 
   setRunning(true);
   logOutput.textContent = "Starting prediction...";
