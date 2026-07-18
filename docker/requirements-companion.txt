@@ -2,3 +2,5 @@ rdkit
 molmass
 matplotlib
 Pillow
+openclatura
+openbabel-wheel

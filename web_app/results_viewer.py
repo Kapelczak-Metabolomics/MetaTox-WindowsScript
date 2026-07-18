@@ -8,7 +8,11 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from chemistry_utils import smiles_to_iupac
+from chemistry_utils import (
+    is_missing_iupac,
+    load_iupac_cache,
+    resolve_iupac_batch,
+)
 
 
 TOOL_COLUMNS = {
@@ -66,36 +70,75 @@ def _active_tools(row: Dict[str, str]) -> List[str]:
     return tools
 
 
-def _parse_tsv(tsv_path: Path) -> List[MetaboliteRecord]:
+def _parse_tsv(
+    tsv_path: Path,
+    cache_path: Optional[Path] = None,
+    resolve_missing: bool = False,
+) -> List[MetaboliteRecord]:
     records: List[MetaboliteRecord] = []
+    pending_smiles: List[str] = []
+    pending_rows: List[dict] = []
+    cache = load_iupac_cache(cache_path) if cache_path else {}
+
     with tsv_path.open("r", encoding="utf-8", errors="replace", newline="") as handle:
         reader = csv.DictReader(handle, delimiter="\t")
         for index, row in enumerate(reader, start=1):
             smiles = (row.get("Smiles") or "").strip()
             figure_id = (row.get("Figure") or "").strip()
             iupac = (row.get("Iupac") or row.get("IUPAC") or "").strip()
-            if not iupac and smiles:
-                iupac = smiles_to_iupac(smiles)
-
-            records.append(
-                MetaboliteRecord(
-                    index=index,
-                    formula=(row.get("FormuleBrute") or "").strip(),
-                    mass=(row.get("Masse(+H)") or "").strip(),
-                    smiles=smiles,
-                    iupac=iupac,
-                    figure_id=figure_id,
-                    image_name=_figure_to_image_name(figure_id),
-                    tools=_active_tools(row),
-                    sygma_pathway=(row.get("Sygma_pathway") or "").strip(),
-                    biotrans_pathway=(row.get("BioTrans_pathway") or "").strip(),
-                    gloryx_pathway=(row.get("GloryX_pathway") or "").strip(),
-                    sygma_score=(row.get("Sygma_score") or "").strip(),
-                    gloryx_score=(row.get("GloryX_score") or "").strip(),
-                    biotrans_score=(row.get("BioTrans_AlogP") or "").strip(),
-                )
+            pending_rows.append(
+                {
+                    "index": index,
+                    "row": row,
+                    "smiles": smiles,
+                    "figure_id": figure_id,
+                    "iupac": iupac,
+                }
             )
+            if is_missing_iupac(iupac) and smiles:
+                pending_smiles.append(smiles)
+
+    resolved_names: Dict[str, str] = {}
+    if resolve_missing:
+        resolved_names = resolve_iupac_batch(pending_smiles, cache_path=cache_path)
+    else:
+        resolved_names = {
+            smiles: cache[smiles]
+            for smiles in pending_smiles
+            if smiles in cache and not is_missing_iupac(cache[smiles])
+        }
+
+    for item in pending_rows:
+        smiles = item["smiles"]
+        iupac = item["iupac"]
+        if is_missing_iupac(iupac) and smiles:
+            iupac = resolved_names.get(smiles, "")
+
+        row = item["row"]
+        records.append(
+            MetaboliteRecord(
+                index=item["index"],
+                formula=(row.get("FormuleBrute") or "").strip(),
+                mass=(row.get("Masse(+H)") or "").strip(),
+                smiles=smiles,
+                iupac=iupac,
+                figure_id=item["figure_id"],
+                image_name=_figure_to_image_name(item["figure_id"]),
+                tools=_active_tools(row),
+                sygma_pathway=(row.get("Sygma_pathway") or "").strip(),
+                biotrans_pathway=(row.get("BioTrans_pathway") or "").strip(),
+                gloryx_pathway=(row.get("GloryX_pathway") or "").strip(),
+                sygma_score=(row.get("Sygma_score") or "").strip(),
+                gloryx_score=(row.get("GloryX_score") or "").strip(),
+                biotrans_score=(row.get("BioTrans_AlogP") or "").strip(),
+            )
+        )
     return records
+
+
+def resolve_iupac_for_smiles(output_dir: Path, smiles_list: List[str]) -> Dict[str, str]:
+    output_dir = output_dir.resolve()
+    return resolve_iupac_batch(smiles_list, cache_path=output_dir / ".iupac_cache.json")
 
 
 def load_results_for_viewer(output_dir: Path) -> Dict[str, object]:
@@ -107,7 +150,7 @@ def load_results_for_viewer(output_dir: Path) -> Dict[str, object]:
     for tsv_path in sorted(output_dir.glob("*_CompileResults.tsv")):
         molecule_id = tsv_path.name.replace("_CompileResults.tsv", "")
         figure_dir = output_dir / f"{molecule_id}_figures"
-        metabolites = _parse_tsv(tsv_path)
+        metabolites = _parse_tsv(tsv_path, cache_path=output_dir / ".iupac_cache.json")
         result_sets.append(
             ResultSet(
                 id=molecule_id,

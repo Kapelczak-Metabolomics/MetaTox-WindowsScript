@@ -46,7 +46,7 @@ def test_load_results_for_viewer(tmp_path: Path, monkeypatch):
         writer.writerow(header)
         writer.writerow(row)
 
-    monkeypatch.setattr("results_viewer.smiles_to_iupac", lambda _smiles: "ethanol")
+    monkeypatch.setattr("results_viewer.resolve_iupac_batch", lambda smiles_list, cache_path=None: {"CCO": "ethanol"})
     payload = load_results_for_viewer(output_dir)
 
     assert payload["available"] is True

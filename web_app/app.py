@@ -16,7 +16,7 @@ from pipeline import (
     validate_input_file,
     zip_output_directory,
 )
-from results_viewer import load_results_for_viewer, resolve_result_image
+from results_viewer import load_results_for_viewer, resolve_iupac_for_smiles, resolve_result_image
 
 
 BIOTRANS_OPTIONS = {
@@ -231,6 +231,25 @@ def results_viewer_api():
     if not output_dir:
         return jsonify({"available": False, "result_sets": []})
     return jsonify(load_results_for_viewer(output_dir))
+
+
+@app.post("/api/results/iupac")
+def results_iupac_api():
+    output_dir = _output_dir_from_request()
+    if not output_dir:
+        return jsonify({"error": "No output directory is available."}), 404
+
+    payload = request.get_json(silent=True) or {}
+    smiles_list = payload.get("smiles") or []
+    if not isinstance(smiles_list, list):
+        return jsonify({"error": "Expected a JSON array field named 'smiles'."}), 400
+
+    cleaned = [str(item).strip() for item in smiles_list if str(item).strip()]
+    if not cleaned:
+        return jsonify({"names": {}})
+
+    names = resolve_iupac_for_smiles(output_dir, cleaned)
+    return jsonify({"names": names})
 
 
 @app.get("/api/results/image/<molecule_id>/<path:image_name>")

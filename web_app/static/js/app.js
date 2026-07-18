@@ -25,6 +25,14 @@ let pollTimer = null;
 let activeInputMode = "upload";
 let viewerData = null;
 let currentOutputDir = null;
+let iupacRequestToken = 0;
+
+function isMissingIupac(value) {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
+  return !normalized || normalized === "na" || normalized === "n/a" || normalized === "name unavailable";
+}
 
 function setInputMode(mode) {
   activeInputMode = mode;
@@ -124,7 +132,9 @@ function renderViewerCards(resultSet) {
               </div>
               <div>
                 <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">IUPAC name</p>
-                <p class="mt-1 text-sm leading-relaxed text-slate-800">${escapeHtml(metabolite.iupac || "Name unavailable")}</p>
+                <p class="mt-1 text-sm leading-relaxed text-slate-800 iupac-name" data-index="${metabolite.index}">
+                  ${escapeHtml(isMissingIupac(metabolite.iupac) ? "Resolving name..." : metabolite.iupac)}
+                </p>
               </div>
               <div class="grid gap-3 sm:grid-cols-2">
                 <div>
@@ -147,6 +157,68 @@ function renderViewerCards(resultSet) {
       `;
     })
     .join("");
+
+  hydrateIupacNames(resultSet);
+}
+
+async function hydrateIupacNames(resultSet) {
+  if (!currentOutputDir || !resultSet) {
+    return;
+  }
+
+  const requestToken = ++iupacRequestToken;
+  const smilesToResolve = [
+    ...new Set(
+      resultSet.metabolites
+        .filter((metabolite) => isMissingIupac(metabolite.iupac) && metabolite.smiles)
+        .map((metabolite) => metabolite.smiles)
+    ),
+  ];
+
+  if (!smilesToResolve.length) {
+    return;
+  }
+
+  const batchSize = 25;
+  for (let offset = 0; offset < smilesToResolve.length; offset += batchSize) {
+    if (requestToken !== iupacRequestToken) {
+      return;
+    }
+
+    const batch = smilesToResolve.slice(offset, offset + batchSize);
+    try {
+      const response = await fetch(
+        `/api/results/iupac?output_dir=${encodeURIComponent(currentOutputDir)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ smiles: batch }),
+        }
+      );
+      const data = await response.json();
+      if (!response.ok || requestToken !== iupacRequestToken) {
+        continue;
+      }
+
+      const names = data.names || {};
+      batch.forEach((smiles) => {
+        const iupac = names[smiles];
+        resultSet.metabolites
+          .filter((metabolite) => metabolite.smiles === smiles)
+          .forEach((metabolite) => {
+            if (!isMissingIupac(iupac)) {
+              metabolite.iupac = iupac;
+            }
+            const node = viewerList.querySelector(`.iupac-name[data-index="${metabolite.index}"]`);
+            if (node) {
+              node.textContent = isMissingIupac(iupac) ? "Name unavailable" : iupac;
+            }
+          });
+      });
+    } catch (error) {
+      console.error("Failed to resolve IUPAC names:", error);
+    }
+  }
 }
 
 function populateViewerSelect(resultSets) {

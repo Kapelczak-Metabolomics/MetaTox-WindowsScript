@@ -21,7 +21,6 @@ import matplotlib
 matplotlib.use("Agg")
 
 import rdkit
-from chemistry_utils import smiles_to_iupac
 from molmass import Formula
 from rdkit import Chem
 from rdkit.Chem import Draw
@@ -394,7 +393,7 @@ for smiles in smiles_list:
             stored_smiles = figure_dic.get(smiles) or smiles
             print(f"Molecule_{nbmolecule},{stored_smiles}", file=figures_handle)
     
-    iupac_value = smiles_to_iupac(smiles) if formulebrute != "NA" else "NA"
+    iupac_value = "" if formulebrute != "NA" else "NA"
     print(f"{formulebrute}\t{mass}\t{smiles}\t{iupac_value}\t{sygma}\t{biotrans}\t{metatrans}\t{gloryx}\t{metapred}\t{sygma_pathway}\t{biotrans_pathway}\t{gloryx_pathway}\t{sygma_score}\t{gloryx_score}\t{biotrans_score}\t{biotrans_prec_for}\t{biotrans_prec_smiles}\t{biotrans_enzyme}\t{biotrans_system}\t{figure}".replace("None", ""), file=results_file)
 
 figures_handle.close()
