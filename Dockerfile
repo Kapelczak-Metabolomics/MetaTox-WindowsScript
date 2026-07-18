@@ -1,4 +1,4 @@
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     APP_ROOT=/app \
@@ -6,6 +6,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONPATH=/app/web_app \
     METATOX_VERBOSE=true \
     METATOX_NATIVE_COMPILE=true \
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+    PIP_NO_CACHE_DIR=1 \
     SINGULARITY_CACHEDIR=/var/lib/metatox/singularity-cache \
     APPTAINER_CACHEDIR=/var/lib/metatox/singularity-cache \
     APPTAINER_NO_MOUNT=cwd,home,tmp,/etc/localtime \
@@ -31,20 +33,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxext6 \
     libxrender1 \
     openbabel \
-    software-properties-common \
+    python3 \
+    python3-pip \
+    python3-venv \
     squashfuse \
     tzdata \
     uidmap \
     wget \
-    && add-apt-repository -y ppa:deadsnakes/ppa \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends \
-    python3.11 \
-    python3.11-venv \
-    && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
-    && python3.11 -m ensurepip --upgrade \
-    && python3.11 -m pip install --no-cache-dir --upgrade pip \
     && ln -sf /usr/share/zoneinfo/UTC /etc/localtime \
+    && python3 -m pip install --upgrade pip \
     && rm -rf /var/lib/apt/lists/*
 
 ARG APPTAINER_VERSION=1.3.6
@@ -57,7 +54,7 @@ RUN wget -q "https://github.com/apptainer/apptainer/releases/download/v${APPTAIN
 
 COPY web_app/requirements.txt /tmp/requirements.txt
 COPY docker/requirements-companion.txt /tmp/requirements-companion.txt
-RUN python3 -m pip install --no-cache-dir -r /tmp/requirements.txt -r /tmp/requirements-companion.txt
+RUN python3 -m pip install -r /tmp/requirements.txt -r /tmp/requirements-companion.txt
 
 COPY . /app
 
