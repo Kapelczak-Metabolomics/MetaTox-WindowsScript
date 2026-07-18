@@ -18,6 +18,26 @@ As this project was designed for non-bioinformaticians, a **graphical interface 
 
 This project has been tested and run on **linux** and **windows-WSL2**.
 
+### Docker deployment (recommended)
+
+Run MetaTox with a browser-based GUI and bundled dependencies:
+
+```bash
+docker compose up --build
+```
+
+Open `http://localhost:8501`, upload your input file, and download results from the web UI (Tailwind CSS + Flowbite interface).
+
+- Setup guide: [`docker/README.md`](docker/README.md)
+- Outputs are saved to `data/output/`
+
+### Windows desktop app (alternative)
+
+A native Windows GUI is available in [`windows_app/`](windows_app/). It packages as `MetaToxGUI.exe` and runs the same pipeline through WSL2.
+
+- Build guide: [`windows_app/README_WINDOWS.md`](windows_app/README_WINDOWS.md)
+- Quick build on Windows: `windows_app\build.bat`
+
 Due to hardware limitations, **Meta-Predictor** (which requires **cuda drivers**) may not function correctly. Its use is therefore disabled by default.
 You can try running it and seeing the error logs to solve potential problems.
 

@@ -1,0 +1,29 @@
+services:
+  metatox:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: metatox:latest
+    container_name: metatox
+    ports:
+      - "${METATOX_PORT:-8501}:8501"
+    environment:
+      METATOX_PORT: "8501"
+      METATOX_VERBOSE: "true"
+      METATOX_NATIVE_COMPILE: "true"
+      METATOX_PREFETCH_IMAGES: "${METATOX_PREFETCH_IMAGES:-false}"
+      APPTAINER_NO_MOUNT: "cwd,home,tmp,/etc/localtime"
+      SINGULARITY_NO_MOUNT: "cwd,home,tmp,/etc/localtime"
+      APPTAINER_TMPDIR: "/tmp/apptainer"
+      SINGULARITY_TMPDIR: "/tmp/apptainer"
+      TMPDIR: "/tmp"
+    volumes:
+      - ./data/input:/app/data/input
+      - ./data/output:/app/data/output
+      - metatox-singularity-cache:/var/lib/metatox/singularity-cache
+    restart: unless-stopped
+    privileged: true
+    shm_size: "4gb"
+
+volumes:
+  metatox-singularity-cache:

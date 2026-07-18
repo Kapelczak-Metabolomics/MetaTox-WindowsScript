@@ -1,0 +1,313 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="mb-8">
+  <h1 class="text-3xl font-bold tracking-tight text-slate-900">Run metabolite predictions</h1>
+  <p class="mt-2 max-w-3xl text-slate-600">
+    In silico prediction with BioTransformer3, SygMa, GLORYx, MetaTrans, and optional Meta-Predictor.
+    Upload one molecule per line as <code class="rounded bg-slate-200 px-1.5 py-0.5 text-sm">MoleculeName,SMILES</code>.
+  </p>
+</div>
+
+<div class="grid gap-6 lg:grid-cols-12">
+  <aside class="lg:col-span-4">
+    <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <h2 class="mb-4 text-lg font-semibold text-slate-900">Prediction options</h2>
+      <form id="options-form" class="space-y-4">
+        <div>
+          <label for="biotrans_type" class="mb-2 block text-sm font-medium text-slate-700">BioTransformer model</label>
+          <select id="biotrans_type" name="biotrans_type" class="block w-full rounded-lg border border-slate-300 bg-slate-50 p-2.5 text-sm text-slate-900 focus:border-brand-500 focus:ring-brand-500">
+            {% for key, label in biotrans_options.items() %}
+            <option value="{{ key }}">{{ key }} — {{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label for="nstep" class="mb-2 block text-sm font-medium text-slate-700">BioTransformer steps</label>
+            <input id="nstep" name="nstep" type="number" min="1" max="10" value="1" class="block w-full rounded-lg border border-slate-300 bg-slate-50 p-2.5 text-sm focus:border-brand-500 focus:ring-brand-500">
+          </div>
+          <div>
+            <label for="cmode" class="mb-2 block text-sm font-medium text-slate-700">CYP450 mode</label>
+            <select id="cmode" name="cmode" class="block w-full rounded-lg border border-slate-300 bg-slate-50 p-2.5 text-sm focus:border-brand-500 focus:ring-brand-500">
+              <option value="1">1 — CypReact + rules</option>
+              <option value="2">2 — CyProduct only</option>
+              <option value="3" selected>3 — Combined</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label for="phase1" class="mb-2 block text-sm font-medium text-slate-700">SygMa phase 1</label>
+            <input id="phase1" name="phase1" type="number" min="1" max="10" value="1" class="block w-full rounded-lg border border-slate-300 bg-slate-50 p-2.5 text-sm focus:border-brand-500 focus:ring-brand-500">
+          </div>
+          <div>
+            <label for="phase2" class="mb-2 block text-sm font-medium text-slate-700">SygMa phase 2</label>
+            <input id="phase2" name="phase2" type="number" min="1" max="10" value="1" class="block w-full rounded-lg border border-slate-300 bg-slate-50 p-2.5 text-sm focus:border-brand-500 focus:ring-brand-500">
+          </div>
+        </div>
+
+        <div>
+          <label for="phase_gloryx" class="mb-2 block text-sm font-medium text-slate-700">GLORYx phase</label>
+          <select id="phase_gloryx" name="phase_gloryx" class="block w-full rounded-lg border border-slate-300 bg-slate-50 p-2.5 text-sm focus:border-brand-500 focus:ring-brand-500">
+            {% for key, label in gloryx_options.items() %}
+            <option value="{{ key }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div>
+          <label for="outdir" class="mb-2 block text-sm font-medium text-slate-700">Output folder name</label>
+          <input id="outdir" name="outdir" type="text" value="data/output/Results_Prediction" class="block w-full rounded-lg border border-slate-300 bg-slate-50 p-2.5 text-sm focus:border-brand-500 focus:ring-brand-500">
+        </div>
+
+        <div class="space-y-3 rounded-xl bg-slate-50 p-4">
+          <label class="flex items-start gap-3 {% if not env_status.metapredictor_available %}opacity-60{% endif %}">
+            <input id="predictor_activate" name="predictor_activate" type="checkbox" value="true" class="mt-1 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500" {% if not env_status.metapredictor_available %}disabled{% endif %}>
+            <span class="text-sm text-slate-700">
+              Enable Meta-Predictor
+              <span class="block text-slate-500">
+                {% if env_status.metapredictor_available %}
+                Requires CUDA setup inside the container
+                {% else %}
+                Not installed in this container (leave disabled)
+                {% endif %}
+              </span>
+            </span>
+          </label>
+          <label class="flex items-center gap-3">
+            <input id="keep_tmp" name="keep_tmp" type="checkbox" value="true" class="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500">
+            <span class="text-sm text-slate-700">Keep intermediate files</span>
+          </label>
+          <label class="flex items-start gap-3">
+            <input id="export_elmaven" name="export_elmaven" type="checkbox" value="true" class="mt-1 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500">
+            <span class="text-sm text-slate-700">
+              Export El-MAVEN knowns list
+              <span class="block text-slate-500">Write a Maven/El-MAVEN knowns CSV with compound names and formulas for all predicted products.</span>
+            </span>
+          </label>
+          {% if example_available %}
+          <label class="flex items-center gap-3">
+            <input id="use_example" name="use_example" type="checkbox" value="true" class="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500">
+            <span class="text-sm text-slate-700">Use bundled example input</span>
+          </label>
+          {% endif %}
+        </div>
+      </form>
+    </div>
+  </aside>
+
+  <section class="lg:col-span-8">
+    <div class="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div class="border-b border-slate-200">
+        <ul class="flex flex-wrap -mb-px text-sm font-medium text-center" id="metatox-tabs" data-tabs-toggle="#metatox-tab-content" role="tablist">
+          <li class="me-2" role="presentation">
+            <button class="inline-block rounded-t-lg border-b-2 p-4" id="run-tab" data-tabs-target="#run-panel" type="button" role="tab">Run</button>
+          </li>
+          <li class="me-2" role="presentation">
+            <button class="inline-block rounded-t-lg border-b-2 p-4" id="results-tab" data-tabs-target="#results-panel" type="button" role="tab">Results</button>
+          </li>
+          <li class="me-2" role="presentation">
+            <button class="inline-block rounded-t-lg border-b-2 p-4" id="viewer-tab" data-tabs-target="#viewer-panel" type="button" role="tab">Viewer</button>
+          </li>
+          <li role="presentation">
+            <button class="inline-block rounded-t-lg border-b-2 p-4" id="environment-tab" data-tabs-target="#environment-panel" type="button" role="tab">Environment</button>
+          </li>
+        </ul>
+      </div>
+
+      <div id="metatox-tab-content" class="p-6">
+        <div id="run-panel" role="tabpanel">
+          <div class="mb-6">
+            <div class="mb-4 border-b border-slate-200">
+              <ul class="flex flex-wrap -mb-px text-sm font-medium text-center" id="input-method-tabs">
+                <li class="me-2">
+                  <button type="button" data-input-mode="upload" class="input-mode-tab inline-block rounded-t-lg border-b-2 border-brand-600 p-4 text-brand-600 active">
+                    Upload file
+                  </button>
+                </li>
+                <li>
+                  <button type="button" data-input-mode="paste" class="input-mode-tab inline-block rounded-t-lg border-b-2 border-transparent p-4 hover:border-slate-300 hover:text-slate-600">
+                    Paste directly
+                  </button>
+                </li>
+              </ul>
+            </div>
+
+            <div id="input-upload-panel">
+              <label class="mb-2 block text-sm font-medium text-slate-700" for="input_file">Input file</label>
+              <input id="input_file" name="input_file" type="file" accept=".txt,.csv" class="block w-full cursor-pointer rounded-lg border border-slate-300 bg-slate-50 text-sm text-slate-900 focus:outline-none">
+              <p class="mt-2 text-sm text-slate-500">One molecule per line: <code>MoleculeName,SMILES</code></p>
+            </div>
+
+            <div id="input-paste-panel" class="hidden">
+              <label class="mb-2 block text-sm font-medium text-slate-700" for="input_text">Molecule list</label>
+              <textarea
+                id="input_text"
+                name="input_text"
+                rows="8"
+                placeholder="Nicotine,CN1CCC[C@H]1c2cccnc2&#10;Aspirin,CC(=O)Oc1ccccc1C(=O)O"
+                class="block w-full rounded-lg border border-slate-300 bg-slate-50 p-3 text-sm text-slate-900 focus:border-brand-500 focus:ring-brand-500"
+              ></textarea>
+              <p class="mt-2 text-sm text-slate-500">Enter one molecule per line as <code>MoleculeName,SMILES</code>.</p>
+            </div>
+          </div>
+
+          <div id="alert-box" class="mb-4 hidden rounded-lg p-4 text-sm" role="alert"></div>
+
+          <div class="mb-6 flex flex-wrap gap-3">
+            <button id="run-button" type="button" class="inline-flex items-center rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-700 focus:outline-none focus:ring-4 focus:ring-brand-300">
+              <svg class="me-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              Run prediction
+            </button>
+            <button id="cancel-button" type="button" disabled class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-100 focus:outline-none focus:ring-4 focus:ring-slate-200 disabled:cursor-not-allowed disabled:opacity-50">
+              Cancel
+            </button>
+          </div>
+
+          <div>
+            <div class="mb-2 flex items-center justify-between">
+              <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Pipeline log</h3>
+              <span id="run-status" class="text-sm text-slate-500">Idle</span>
+            </div>
+            <pre id="log-output" class="log-panel h-96 overflow-auto rounded-xl p-4 text-sm">No output yet.</pre>
+          </div>
+        </div>
+
+        <div id="results-panel" class="hidden" role="tabpanel">
+          <div id="results-empty" class="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-slate-500">
+            Run a prediction to generate downloadable results.
+          </div>
+          <div id="results-content" class="hidden space-y-4">
+            <div class="rounded-xl bg-green-50 p-4 text-green-800">
+              <p class="font-medium">Prediction completed</p>
+              <pre id="results-summary" class="mt-2 whitespace-pre-wrap text-sm text-green-900"></pre>
+            </div>
+            <div class="flex flex-wrap gap-3">
+              <a id="download-link" href="/api/download" class="inline-flex items-center rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-700">
+                Download results (.zip)
+              </a>
+              <a id="elmaven-download-link" href="/api/results/elmaven" class="hidden inline-flex items-center rounded-lg border border-brand-600 bg-white px-5 py-2.5 text-sm font-medium text-brand-700 hover:bg-brand-50">
+                Download El-MAVEN knowns (.csv)
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <div id="viewer-panel" class="hidden" role="tabpanel">
+          <div id="viewer-empty" class="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-slate-500">
+          <p>Run a prediction or load a previously generated results zip to browse metabolites here.</p>
+          <div class="mx-auto mt-5 flex max-w-md flex-col items-center gap-3 sm:flex-row sm:justify-center">
+            <label class="inline-flex cursor-pointer items-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
+              Choose results zip
+              <input id="viewer-zip-input" type="file" accept=".zip,application/zip" class="hidden">
+            </label>
+            <button id="viewer-zip-upload" type="button" class="inline-flex items-center rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-700">
+              Load into viewer
+            </button>
+          </div>
+          <p id="viewer-zip-status" class="mt-3 text-sm text-slate-500"></p>
+        </div>
+          <div id="viewer-content" class="hidden space-y-4">
+            <div class="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h3 class="text-lg font-semibold text-slate-900">Results viewer</h3>
+                <p class="text-sm text-slate-500">Browse predicted metabolites with structures and IUPAC names.</p>
+                <p id="viewer-source" class="mt-1 hidden text-xs text-slate-500"></p>
+              </div>
+              <div class="flex flex-wrap items-end gap-3">
+                <div class="min-w-[10rem]">
+                  <label for="viewer-sort" class="mb-1 block text-sm font-medium text-slate-700">Sort by m/z</label>
+                  <select id="viewer-sort" class="block w-full rounded-lg border border-slate-300 bg-slate-50 p-2.5 text-sm focus:border-brand-500 focus:ring-brand-500">
+                    <option value="mz-asc" selected>Low to high</option>
+                    <option value="mz-desc">High to low</option>
+                    <option value="index">Original order</option>
+                  </select>
+                </div>
+                <div class="min-w-[14rem]">
+                  <label for="viewer-result-set" class="mb-1 block text-sm font-medium text-slate-700">Input molecule</label>
+                  <select id="viewer-result-set" class="block w-full rounded-lg border border-slate-300 bg-slate-50 p-2.5 text-sm focus:border-brand-500 focus:ring-brand-500"></select>
+                </div>
+                <div class="flex flex-col gap-1">
+                  <span class="text-sm font-medium text-slate-700">Load zip</span>
+                  <div class="flex gap-2">
+                    <label class="inline-flex cursor-pointer items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                      Choose
+                      <input id="viewer-zip-input-active" type="file" accept=".zip,application/zip" class="hidden">
+                    </label>
+                    <button id="viewer-zip-upload-active" type="button" class="inline-flex items-center rounded-lg bg-slate-800 px-3 py-2 text-sm font-medium text-white hover:bg-slate-900">
+                      Upload
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p id="viewer-count" class="text-sm text-slate-500"></p>
+            <div id="viewer-list" class="max-h-[42rem] space-y-4 overflow-y-auto pr-1"></div>
+          </div>
+        </div>
+
+        <div id="environment-panel" class="hidden" role="tabpanel">
+          <div class="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div class="rounded-xl border border-slate-200 p-4">
+              <p class="text-sm text-slate-500">Singularity/Apptainer</p>
+              <p class="mt-1 text-lg font-semibold {% if env_status.singularity_available %}text-green-600{% else %}text-red-600{% endif %}">
+                {% if env_status.singularity_available %}Ready{% else %}Missing{% endif %}
+              </p>
+            </div>
+            <div class="rounded-xl border border-slate-200 p-4">
+              <p class="text-sm text-slate-500">Metatox.sh</p>
+              <p class="mt-1 text-lg font-semibold {% if env_status.metatox_script_found %}text-green-600{% else %}text-red-600{% endif %}">
+                {% if env_status.metatox_script_found %}Found{% else %}Missing{% endif %}
+              </p>
+            </div>
+            <div class="rounded-xl border border-slate-200 p-4">
+              <p class="text-sm text-slate-500">Meta-Predictor</p>
+              <p class="mt-1 text-lg font-semibold {% if env_status.metapredictor_available %}text-green-600{% else %}text-amber-600{% endif %}">
+                {% if env_status.metapredictor_available %}Installed{% else %}Not installed{% endif %}
+              </p>
+            </div>
+            <div class="rounded-xl border border-slate-200 p-4">
+              <p class="text-sm text-slate-500">Work directory</p>
+              <p class="mt-1 break-all text-sm font-medium text-slate-800">{{ env_status.work_dir }}</p>
+            </div>
+          </div>
+
+          {% if env_status.notes %}
+          <div class="mb-4 rounded-xl bg-blue-50 p-4 text-sm text-blue-900">
+            <ul class="list-disc space-y-1 pl-5">
+              {% for note in env_status.notes %}
+              <li>{{ note }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% endif %}
+
+          {% if env_status.issues %}
+          <div class="mb-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">
+            <p class="mb-2 font-medium">Issues detected</p>
+            <ul class="list-disc space-y-1 pl-5">
+              {% for issue in env_status.issues %}
+              <li>{{ issue }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% else %}
+          <div class="rounded-xl bg-green-50 p-4 text-sm text-green-900">All required checks passed.</div>
+          {% endif %}
+
+          <button id="refresh-env" type="button" class="mt-4 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100">
+            Refresh environment checks
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% endblock %}
