@@ -529,10 +529,17 @@ do
 
     sygma_job () {
         set -e
-        singularity run "${SINGULARITY_COMMON_ARGS[@]}" docker://3dechem/sygma "${tab_smiles[${indice}]}" \
-        -1 $phase1 \
-        -2 $phase2 \
-        >> "${tmp}${tab_molecule[${indice}]}_Sygma.sdf" 2>> "${log}${tab_molecule[${indice}]}_Sygma_log.txt"
+        local mol="${tab_molecule[${indice}]}"
+        mkdir -p "${tmp}sygma-runtime/home" "${tmp}sygma-runtime/eggs"
+        singularity run "${SINGULARITY_COMMON_ARGS[@]}" \
+            -B "${tmp}:/tmp" \
+            --env "HOME=/tmp/sygma-runtime/home" \
+            --env "PYTHON_EGG_CACHE=/tmp/sygma-runtime/eggs" \
+            --env "TMPDIR=/tmp" \
+            docker://3dechem/sygma "${tab_smiles[${indice}]}" \
+            -1 $phase1 \
+            -2 $phase2 \
+            >> "${tmp}${mol}_Sygma.sdf" 2>> "${log}${mol}_Sygma_log.txt"
     }
 
     if ! run_with_spinner "Sygma ..." sygma_job; then
@@ -587,17 +594,24 @@ do
 
     compilation_job () {
         set -e
+        local mol="${tab_molecule[${indice}]}"
+        touch "${tmp}${mol}_Sygma.sdf"
+        touch "${tmp}${mol}_Metapred.csv" 2>/dev/null || true
+        touch "${tmp}${mol}_MetaTrans.csv" 2>/dev/null || true
+        touch "${tmp}${mol}_Gloryx.csv" 2>/dev/null || true
+        : > "${tmp}${mol}_ListeSmile.txt"
+
         if [ "${METATOX_NATIVE_COMPILE:-false}" = "true" ]; then
-            python3 ${Script_Metatox_Companion} \
-                --biotrans "${tmp}${tab_molecule[${indice}]}_Biotransformer3.csv" \
-                --sygma "${tmp}${tab_molecule[${indice}]}_Sygma.sdf" \
-                --metapred "${tmp}${tab_molecule[${indice}]}_Metapred.csv" \
-                --metatrans "${tmp}${tab_molecule[${indice}]}_MetaTrans.csv" \
-                --gloryx "${tmp}${tab_molecule[${indice}]}_Gloryx.csv" \
+            MPLBACKEND=Agg python3 ${Script_Metatox_Companion} \
+                --biotrans "${tmp}${mol}_Biotransformer3.csv" \
+                --sygma "${tmp}${mol}_Sygma.sdf" \
+                --metapred "${tmp}${mol}_Metapred.csv" \
+                --metatrans "${tmp}${mol}_MetaTrans.csv" \
+                --gloryx "${tmp}${mol}_Gloryx.csv" \
                 --output "${results_file}" \
-                --figure "${tmp}${tab_molecule[${indice}]}_ListeSmile.txt" \
+                --figure "${tmp}${mol}_ListeSmile.txt" \
                 --dirfig "${results_figure}" \
-                > "${log}${tab_molecule[${indice}]}_Compagnion_log.txt" 2>&1
+                > "${log}${mol}_Compagnion_log.txt" 2>&1
         else
             singularity exec "${SINGULARITY_COMMON_ARGS[@]}" \
                 -B "${tmp}:/tmp" \

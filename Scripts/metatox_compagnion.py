@@ -5,17 +5,21 @@
 ###############
 import argparse
 import csv
-import rdkit
-import re
 import os
+import re
+
+import matplotlib
+
+matplotlib.use("Agg")
+
+import rdkit
 from molmass import Formula
-import matplotlib.pyplot as plt
 from rdkit import Chem
-from rdkit.Chem.rdMolDescriptors import CalcMolFormula
 from rdkit.Chem import Draw
 from rdkit.Chem import Descriptors
-from rdkit.Chem import rdMolDescriptors
 from rdkit.Chem import inchi
+from rdkit.Chem import rdMolDescriptors
+from rdkit.Chem.rdMolDescriptors import CalcMolFormula
 
 #######################
 ### Argument parser ###
@@ -76,14 +80,22 @@ def converter(file_name):
     return list_smiles
 
 def smitostr(smile_txt, outDir):
-    input=open(smile_txt, "r")
-    for line in input:
-        code_smile=line.split(",")
-        smi=code_smile[1]
-        molecule = Chem.MolFromSmiles(smi)
-        fig = Draw.MolToMPL(molecule)
-        plt.title(f"{code_smile[0]}")
-        fig.savefig(f"{outDir}{code_smile[0]}.jpeg", bbox_inches='tight')
+    os.makedirs(outDir, exist_ok=True)
+    with open(smile_txt, "r", encoding="utf-8") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line:
+                continue
+            code_smile = line.split(",", 1)
+            if len(code_smile) != 2:
+                continue
+            name = code_smile[0].strip()
+            smi = code_smile[1].strip()
+            molecule = Chem.MolFromSmiles(smi)
+            if molecule is None:
+                continue
+            output_path = os.path.join(outDir, f"{name}.png")
+            Draw.MolToFile(molecule, output_path, size=(320, 320))
 
 #################
 ### Variables ###
@@ -168,69 +180,67 @@ for line in biotrans:
 #############
 ### SygMa ###
 #############
-sdf_smiles=args['sygma']
+sdf_smiles = args["sygma"]
+list_smiles_sygma = []
+list_pathway = []
+list_score = []
 
-list_smiles_sygma=converter(sdf_smiles)
+if os.path.isfile(sdf_smiles) and os.path.getsize(sdf_smiles) > 0:
+    list_smiles_sygma = converter(sdf_smiles)
+    line_pre = ""
 
-list_pathway=[]
-list_score=[]
-line_pre=""
+    for line in open(sdf_smiles, "r", encoding="utf-8", errors="replace"):
+        if line_pre == "pathway":
+            pathway = line.replace(",", "~").strip()
+            line_pre = "pathway_debut"
+            continue
 
-#Get score and pathway from sdf file
-for line in open(sdf_smiles, 'r'):
-    if line_pre == "pathway":
-        pathway=line.replace(",", "~").strip()
-        line_pre="pathway_debut"
-        continue
+        if line_pre == "pathway_debut":
+            pathway_suite = line.replace(",", "~").replace(";", "").strip()
+            pathway_tot = "".join([pathway, pathway_suite])
+            list_pathway.append(pathway_tot)
+            line_pre = ""
 
-    if line_pre == "pathway_debut":
-        pathway_suite=line.replace(",", "~").replace(";", "").strip()
-        pathway_tot="".join([pathway, pathway_suite])
-        list_pathway.append(pathway_tot)
-        line_pre=""
+        if line_pre == "score":
+            score = line.strip()
+            list_score.append(score)
+            line_pre = ""
 
-    if line_pre == "score":
-        score=line.strip()
-        list_score.append(score)
-        line_pre=""
+        if re.match("^>  <Pathway>", line):
+            line_pre = "pathway"
 
-    if re.match("^>  <Pathway>", line):
-        line_pre="pathway"
+        if re.match("^>  <Score>", line):
+            line_pre = "score"
 
-    if re.match("^>  <Score>", line):
-        line_pre="score"
+    for i in range(len(list_smiles_sygma)):
+        smiles = list_smiles_sygma[i]
+        score = list_score[i]
+        pathway = list_pathway[i]
 
-for i in range(len(list_smiles_sygma)):
-    smiles=list_smiles_sygma[i]
-    score=list_score[i]
-    pathway=list_pathway[i]
+        if pathway == "parent":
+            continue
 
-    if pathway == "parent":
-        pass
-    else:
-        #smart=smiles2smart(smiles)
-        #new_smiles=smart2smile(smart)
-        inchi_str=smiles2inchi(smiles)
-        new_smiles=inchi2smiles(inchi_str)
+        inchi_str = smiles2inchi(smiles)
+        new_smiles = inchi2smiles(inchi_str)
 
         sygma_dic.setdefault(new_smiles, "+")
         sygma_pathway_dic.setdefault(new_smiles, pathway)
         sygma_score_dic.setdefault(new_smiles, score)
 
         if new_smiles in smiles_list:
-            pass
-        else:
-            try:
-                formulebrute=smiletoformula(new_smiles)
-                mass=mass_calcul(formulebrute)
-                smiles_list_figure.append(new_smiles)
-            except:
-                formulebrute="NA"
-                mass="NA"
+            continue
 
-            smiles_list.append(new_smiles)
-            formulebrut_dic.setdefault(new_smiles, formulebrute)
-            mass_dic.setdefault(new_smiles, mass)
+        try:
+            formulebrute = smiletoformula(new_smiles)
+            mass = mass_calcul(formulebrute)
+            smiles_list_figure.append(new_smiles)
+        except Exception:
+            formulebrute = "NA"
+            mass = "NA"
+
+        smiles_list.append(new_smiles)
+        formulebrut_dic.setdefault(new_smiles, formulebrute)
+        mass_dic.setdefault(new_smiles, mass)
 
 ##################
 ### Meta-Trans ###
@@ -331,9 +341,12 @@ if os.path.isfile(args['gloryx']):
 ###################
 ### Compilation ###
 ###################
-results_file=open(args['output'], "w")
-figures_file=args['figure']
-dir_figures=args['dirfig']
+os.makedirs(args["dirfig"], exist_ok=True)
+open(args["figure"], "w", encoding="utf-8").close()
+results_file = open(args["output"], "w", encoding="utf-8")
+figures_file = args["figure"]
+dir_figures = args["dirfig"]
+figures_handle = open(figures_file, "a", encoding="utf-8")
 
 #Entete
 print("FormuleBrute\tMasse(+H)\tSmiles\tSygma\tBioTransformer3\tMetaTrans\tGloryX\tMetaPredictor\tSygma_pathway\tBioTrans_pathway\tGloryX_pathway\tSygma_score\tGloryX_score\tBioTrans_AlogP\tBioTrans_precursor\tBioTrans_precursor\tBioTrans_enzyme\tBioTrans_system\tFigure", file=results_file)
@@ -367,11 +380,15 @@ for smiles in smiles_list:
         nbmolecule+=1
         figure=f"Figure_{nbmolecule}"
         if smiles in smiles_list_figure:
-            print(f"Molecule_{nbmolecule},{smiles}", file=open(figures_file, 'a'))
+            print(f"Molecule_{nbmolecule},{smiles}", file=figures_handle)
         else:
-            print(f"Molecule_{nbmolecule},{figure_dic.get(smiles).strip()}", file=open(figures_file, 'a'))
+            stored_smiles = figure_dic.get(smiles) or smiles
+            print(f"Molecule_{nbmolecule},{stored_smiles}", file=figures_handle)
     
     print(f"{formulebrute}\t{mass}\t{smiles}\t{sygma}\t{biotrans}\t{metatrans}\t{gloryx}\t{metapred}\t{sygma_pathway}\t{biotrans_pathway}\t{gloryx_pathway}\t{sygma_score}\t{gloryx_score}\t{biotrans_score}\t{biotrans_prec_for}\t{biotrans_prec_smiles}\t{biotrans_enzyme}\t{biotrans_system}\t{figure}".replace("None", ""), file=results_file)
 
-#Figures creation
+figures_handle.close()
+results_file.close()
+
+# Figures creation
 smitostr(figures_file, dir_figures)

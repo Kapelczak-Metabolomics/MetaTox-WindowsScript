@@ -233,6 +233,7 @@ def summarize_outputs(output_dir: Path) -> str:
     figure_dirs = sorted(
         path for path in output_dir.iterdir() if path.is_dir() and path.name.endswith("_figures")
     )
+    figure_images = sorted(output_dir.rglob("*_figures/*.png"))
     lines = [
         f"Output folder: {output_dir}",
         f"Compiled result files: {len(tsv_files)}",

@@ -15,6 +15,16 @@ mkdir -p "${TMP_TEST}"
 echo "==> Apptainer version"
 singularity --version
 
+echo "==> SygMa image can execute"
+mkdir -p "${TMP_TEST}/sygma-runtime/home" "${TMP_TEST}/sygma-runtime/eggs"
+singularity run --no-mount cwd,home,tmp -B "${TMP_TEST}:/tmp" \
+  --env "HOME=/tmp/sygma-runtime/home" \
+  --env "PYTHON_EGG_CACHE=/tmp/sygma-runtime/eggs" \
+  --env "TMPDIR=/tmp" \
+  docker://3dechem/sygma "${SMILES}" -1 1 -2 1 > "${TMP_TEST}/smoke_sygma.sdf" 2>"${TMP_TEST}/smoke_sygma.log"
+test -s "${TMP_TEST}/smoke_sygma.sdf"
+echo "OK: SygMa produced ${TMP_TEST}/smoke_sygma.sdf"
+
 echo "==> GLORYx image can access gloryx_api.py"
 singularity run --no-mount cwd,home,tmp -B "${TMP_TEST}:/tmp" \
   library://abourdais/default/gloryx_api \
