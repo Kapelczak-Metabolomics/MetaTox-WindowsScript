@@ -15,6 +15,24 @@ Run MetaTox as a self-contained Docker service with a browser-based GUI. No WSL,
 - ~8 GB free disk space for Singularity images on first run
 - Internet access on first prediction (downloads BioTransformer, SygMa, GLORYx, MetaTrans images)
 
+### macOS (Apple Silicon)
+
+Docker Desktop on M-series Macs builds `linux/arm64` images by default. Apptainer only publishes amd64 `.deb` files on GitHub, so the Dockerfile installs Apptainer from the Ubuntu PPA on arm64.
+
+For the most compatible setup (recommended), build and run the service as `linux/amd64` so the bundled Singularity images match the architecture they were published for:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.mac.yml up --build
+```
+
+Native arm64 builds are also supported:
+
+```bash
+docker compose up --build
+```
+
+If Singularity steps fail on a native arm64 build, switch to the `docker-compose.mac.yml` overlay above. In Docker Desktop, enabling **Use Rosetta for x86_64/amd64 emulation** can improve amd64 performance on Apple Silicon.
+
 ## Quick start
 
 From the repository root:

@@ -1,0 +1,11 @@
+# Apple Silicon / ARM64 Mac overlay.
+#
+# MetaTox's Singularity workflow images are published for linux/amd64. Building and
+# running the service under amd64 emulation is the most reliable option on M-series
+# Macs until all upstream images provide native arm64 builds.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.mac.yml up --build
+services:
+  metatox:
+    platform: linux/amd64
