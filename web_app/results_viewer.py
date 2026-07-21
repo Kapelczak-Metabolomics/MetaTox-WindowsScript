@@ -301,16 +301,17 @@ def resolve_iupac_for_smiles(output_dir: Path, smiles_list: List[str]) -> Dict[s
     return resolve_iupac_batch(smiles_list, cache_path=output_dir / ".iupac_cache.json")
 
 
-def load_results_for_viewer(output_dir: Path) -> Dict[str, object]:
+def load_result_sets(output_dir: Path) -> List[ResultSet]:
     output_dir = output_dir.resolve()
     if not output_dir.is_dir():
-        return {"available": False, "result_sets": []}
+        return []
 
     result_sets: List[ResultSet] = []
+    cache_path = output_dir / ".iupac_cache.json"
     for tsv_path in sorted(output_dir.glob("*_CompileResults.tsv")):
         molecule_id = tsv_path.name.replace("_CompileResults.tsv", "")
         figure_dir = output_dir / f"{molecule_id}_figures"
-        metabolites = _parse_tsv(tsv_path, cache_path=output_dir / ".iupac_cache.json")
+        metabolites = _parse_tsv(tsv_path, cache_path=cache_path)
         result_sets.append(
             ResultSet(
                 id=molecule_id,
@@ -322,6 +323,15 @@ def load_results_for_viewer(output_dir: Path) -> Dict[str, object]:
                 parent=load_parent_structure(output_dir, molecule_id),
             )
         )
+    return result_sets
+
+
+def load_results_for_viewer(output_dir: Path) -> Dict[str, object]:
+    output_dir = output_dir.resolve()
+    if not output_dir.is_dir():
+        return {"available": False, "result_sets": []}
+
+    result_sets = load_result_sets(output_dir)
 
     return {
         "available": bool(result_sets),

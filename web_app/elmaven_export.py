@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional
 
 from chemistry_utils import is_missing_iupac
-from results_viewer import MetaboliteRecord, ResultSet, _parse_tsv
+from results_viewer import MetaboliteRecord, ResultSet, _parse_tsv, load_result_sets
 
 ELMAVEN_FILENAME = "MetaTox_elmaven_knowns.csv"
 ELMAVEN_COLUMNS = [
@@ -137,26 +137,6 @@ def collect_unique_knowns(result_sets: Iterable[ResultSet]) -> List[Dict[str, st
                 by_formula[formula] = row
 
     return [by_formula[formula] for formula in sorted(by_formula)]
-
-
-def load_result_sets(output_dir: Path) -> List[ResultSet]:
-    output_dir = output_dir.resolve()
-    cache_path = output_dir / ".iupac_cache.json"
-    result_sets: List[ResultSet] = []
-    for tsv_path in sorted(output_dir.glob("*_CompileResults.tsv")):
-        molecule_id = tsv_path.name.replace("_CompileResults.tsv", "")
-        metabolites = _parse_tsv(tsv_path, cache_path=cache_path)
-        result_sets.append(
-            ResultSet(
-                id=molecule_id,
-                label=molecule_id,
-                tsv_name=tsv_path.name,
-                figure_dir=str(output_dir / f"{molecule_id}_figures"),
-                metabolite_count=len(metabolites),
-                metabolites=metabolites,
-            )
-        )
-    return result_sets
 
 
 def write_elmaven_knowns(rows: List[Dict[str, str]], destination: Path) -> Path:

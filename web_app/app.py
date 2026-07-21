@@ -20,6 +20,7 @@ from pipeline import (
     zip_output_directory,
 )
 from elmaven_export import elmaven_knowns_path, export_elmaven_knowns
+from pdf_report import export_pdf_report, pdf_report_path
 from results_viewer import load_results_for_viewer, resolve_iupac_for_smiles, resolve_result_image
 
 
@@ -306,6 +307,30 @@ def results_iupac_api():
 
     names = resolve_iupac_for_smiles(output_dir, cleaned)
     return jsonify({"names": names})
+
+
+@app.get("/api/results/pdf")
+def download_pdf_report():
+    output_dir = _output_dir_from_request()
+    if not output_dir:
+        return jsonify({"error": "No output directory is available."}), 404
+
+    molecule_id = (request.args.get("molecule_id") or "").strip() or None
+    try:
+        pdf_path = export_pdf_report(output_dir, molecule_id=molecule_id)
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": str(exc)}), 404
+
+    download_name = pdf_path.name
+    if molecule_id:
+        download_name = f"MetaTox_report_{molecule_id}.pdf"
+
+    return send_file(
+        pdf_path,
+        as_attachment=True,
+        download_name=download_name,
+        mimetype="application/pdf",
+    )
 
 
 @app.get("/api/results/elmaven")

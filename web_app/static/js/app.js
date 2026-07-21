@@ -28,6 +28,7 @@ const viewerZipUpload = document.getElementById("viewer-zip-upload");
 const viewerZipStatus = document.getElementById("viewer-zip-status");
 const viewerZipInputActive = document.getElementById("viewer-zip-input-active");
 const viewerZipUploadActive = document.getElementById("viewer-zip-upload-active");
+const viewerPdfExport = document.getElementById("viewer-pdf-export");
 const refreshEnvButton = document.getElementById("refresh-env");
 const envBadge = document.getElementById("env-badge");
 
@@ -724,6 +725,51 @@ async function clearSession() {
   }
 }
 
+async function downloadViewerPdf() {
+  if (!currentOutputDir) {
+    showAlert("Load results into the viewer before exporting a PDF report.", "warning");
+    return;
+  }
+
+  const resultSet = getSelectedResultSet();
+  if (!resultSet) {
+    showAlert("No metabolite result set is available to export.", "warning");
+    return;
+  }
+
+  const url = `/api/results/pdf?output_dir=${encodeURIComponent(currentOutputDir)}&molecule_id=${encodeURIComponent(resultSet.id)}`;
+  if (viewerPdfExport) {
+    viewerPdfExport.disabled = true;
+    viewerPdfExport.textContent = "Preparing PDF...";
+  }
+
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || "Failed to generate the PDF report.");
+    }
+
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = `MetaTox_report_${resultSet.id}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(objectUrl);
+    showAlert("PDF report downloaded.", "success");
+  } catch (error) {
+    showAlert(error.message, "error");
+  } finally {
+    if (viewerPdfExport) {
+      viewerPdfExport.disabled = false;
+      viewerPdfExport.textContent = "Download PDF report";
+    }
+  }
+}
+
 async function cancelRun() {
   try {
     await fetch("/api/cancel", { method: "POST" });
@@ -763,6 +809,10 @@ if (viewerZipUpload && viewerZipInput) {
 
 if (viewerZipUploadActive && viewerZipInputActive) {
   viewerZipUploadActive.addEventListener("click", () => uploadViewerZip(viewerZipInputActive, null));
+}
+
+if (viewerPdfExport) {
+  viewerPdfExport.addEventListener("click", downloadViewerPdf);
 }
 
 runButton.addEventListener("click", startRun);
