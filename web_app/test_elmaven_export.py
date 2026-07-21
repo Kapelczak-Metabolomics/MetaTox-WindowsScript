@@ -8,8 +8,10 @@ from elmaven_export import (
     collect_unique_knowns,
     compound_name,
     export_elmaven_knowns,
+    format_pathway_entry,
     load_result_sets,
     normalize_formula,
+    transformation_label,
 )
 from results_viewer import MetaboliteRecord, ResultSet
 
@@ -51,6 +53,31 @@ def test_compound_name_prefers_iupac():
     assert compound_name("ethanol", "Drug", "Figure_1", 1) == "ethanol"
     assert compound_name("Name unavailable", "Drug", "Figure_1", 1) == "Drug_Figure_1"
     assert compound_name("", "Drug", "NA", 2) == "Drug_metabolite_2"
+    assert (
+        compound_name("ethanol", "Drug", "Figure_1", 1, transformation="Glycine conjugation")
+        == "ethanol (Glycine conjugation)"
+    )
+
+
+def test_format_pathway_entry():
+    assert format_pathway_entry("Glycine conjugation") == "Glycine conjugation"
+    assert format_pathway_entry("glycination_(aliphatic_carboxyl)") == "glycination (aliphatic carboxyl)"
+
+
+def test_transformation_label_prefers_readable_pathways():
+    metabolite = MetaboliteRecord(
+        index=1,
+        formula="C4H9NO2",
+        mass="104.07",
+        smiles="N/A",
+        iupac="2-Aminobutyrate",
+        figure_id="Figure_1",
+        image_name="Molecule_1.png",
+        sygma_pathway="glycination_(aliphatic_carboxyl);",
+        biotrans_pathway="Glycine conjugation",
+        gloryx_pathway="glycination_(aliphatic_carboxyl)",
+    )
+    assert transformation_label(metabolite) == "Glycine conjugation; glycination (aliphatic carboxyl)"
 
 
 def test_collect_unique_knowns_dedupes_by_formula():
@@ -70,6 +97,7 @@ def test_collect_unique_knowns_dedupes_by_formula():
                     iupac="2-Aminobutyrate",
                     figure_id="Figure_1",
                     image_name="Molecule_1.png",
+                    biotrans_pathway="Glycine conjugation",
                 ),
                 MetaboliteRecord(
                     index=2,
@@ -97,7 +125,8 @@ def test_collect_unique_knowns_dedupes_by_formula():
     assert len(rows) == 2
     assert {row["formula"] for row in rows} == {"C4H9NO2", "C2H6O"}
     c4_row = next(row for row in rows if row["formula"] == "C4H9NO2")
-    assert c4_row["compound"] == "2-Aminobutyrate"
+    assert c4_row["compound"] == "2-Aminobutyrate (Glycine conjugation)"
+    assert c4_row["Metabolic.Pathway"] == "Glycine conjugation"
     assert c4_row["mz"] == ""
 
 
@@ -108,8 +137,48 @@ def test_export_elmaven_knowns_from_output_dir(tmp_path: Path):
         output_dir,
         "Drug",
         [
-            ["C2H6O", "47.0", "CCO", "ethanol", "+", "", "", "", "", "", "", "", "", "", "", "", "", "", "Figure_1"],
-            ["C4H9NO2", "104.07", "N/A", "GABA", "+", "", "", "", "", "", "", "", "", "", "", "", "", "", "Figure_2"],
+            [
+                "C2H6O",
+                "47.0",
+                "CCO",
+                "ethanol",
+                "+",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "Figure_1",
+            ],
+            [
+                "C4H9NO2",
+                "104.07",
+                "N/A",
+                "GABA",
+                "+",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "Glycine conjugation",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "Figure_2",
+            ],
         ],
     )
 
@@ -126,6 +195,8 @@ def test_export_elmaven_knowns_from_output_dir(tmp_path: Path):
     assert rows[0]["compound"] == "ethanol"
     assert rows[0]["mz"] == ""
     assert rows[1]["formula"] == "C4H9NO2"
+    assert rows[1]["compound"] == "GABA (Glycine conjugation)"
+    assert rows[1]["Metabolic.Pathway"] == "Glycine conjugation"
 
 
 def test_load_result_sets_reads_tsv(tmp_path: Path):

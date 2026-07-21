@@ -30,17 +30,61 @@ def normalize_formula(formula: str) -> str:
     return re.sub(r"\s+", "", (formula or "").strip())
 
 
+def parse_pathway_entries(value: str) -> List[str]:
+    entries: List[str] = []
+    for raw_entry in (value or "").split(";"):
+        entry = raw_entry.strip().rstrip(";,").strip()
+        if entry and entry.upper() != "NA":
+            entries.append(entry)
+    return entries
+
+
+def format_pathway_entry(value: str) -> str:
+    cleaned = (value or "").strip()
+    if not cleaned:
+        return ""
+    if any(character.isupper() for character in cleaned) and " " in cleaned:
+        return cleaned
+    return cleaned.replace("_", " ")
+
+
+def transformation_label(metabolite: MetaboliteRecord) -> str:
+    candidates: List[str] = []
+    for value in (
+        metabolite.biotrans_pathway,
+        metabolite.gloryx_pathway,
+        metabolite.sygma_pathway,
+    ):
+        for entry in parse_pathway_entries(value):
+            formatted = format_pathway_entry(entry)
+            if formatted and formatted not in candidates:
+                candidates.append(formatted)
+
+    if not candidates:
+        return ""
+    if len(candidates) == 1:
+        return candidates[0]
+    return "; ".join(candidates[:2])
+
+
 def compound_name(
     iupac: str,
     molecule_id: str,
     figure_id: str,
     index: int,
+    transformation: str = "",
 ) -> str:
     if not is_missing_iupac(iupac):
-        return iupac.strip()
-    if figure_id and figure_id.upper() != "NA":
-        return f"{molecule_id}_{figure_id}"
-    return f"{molecule_id}_metabolite_{index}"
+        base_name = iupac.strip()
+    elif figure_id and figure_id.upper() != "NA":
+        base_name = f"{molecule_id}_{figure_id}"
+    else:
+        base_name = f"{molecule_id}_metabolite_{index}"
+
+    transformation = transformation.strip()
+    if transformation:
+        return f"{base_name} ({transformation})"
+    return base_name
 
 
 def _name_priority(name: str) -> int:
@@ -62,11 +106,13 @@ def collect_unique_knowns(result_sets: Iterable[ResultSet]) -> List[Dict[str, st
             if not formula or formula.upper() == "NA":
                 continue
 
+            transformation = transformation_label(metabolite)
             name = compound_name(
                 metabolite.iupac,
                 result_set.id,
                 metabolite.figure_id,
                 metabolite.index,
+                transformation=transformation,
             )
             row = {
                 "compound": name,
@@ -76,7 +122,7 @@ def collect_unique_knowns(result_sets: Iterable[ResultSet]) -> List[Dict[str, st
                 "mz": "",
                 "rt": "",
                 "Nr.C": "",
-                "Metabolic.Pathway": "",
+                "Metabolic.Pathway": transformation,
                 "Mode": "",
                 "Batch": "",
                 "": "",
