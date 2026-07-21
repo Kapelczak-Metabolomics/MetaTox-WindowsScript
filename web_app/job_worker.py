@@ -10,6 +10,7 @@ import time
 from elmaven_export import ELMAVEN_FILENAME, export_elmaven_knowns
 from job_store import JobCancelMonitor, JobStore
 from pipeline import run_pipeline, summarize_outputs, zip_output_directory
+from results_viewer import ensure_parent_structures
 
 
 def _configure_runtime() -> None:
@@ -50,6 +51,7 @@ def run_once(store: JobStore) -> bool:
             log_callback=log_callback,
             cancel_event=cancel_event,
         )
+        ensure_parent_structures(output_dir, options.input_file)
         if options.export_elmaven:
             elmaven_path = export_elmaven_knowns(output_dir)
             store.append_log(f"El-MAVEN knowns list: {elmaven_path}")

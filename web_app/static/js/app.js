@@ -301,11 +301,76 @@ function bindVariantSelect(resultSet, group) {
   });
 }
 
+function structureImageUrl(resultSetId, imageName) {
+  if (!imageName || !currentOutputDir) {
+    return "";
+  }
+  return `/api/results/image/${encodeURIComponent(resultSetId)}/${encodeURIComponent(imageName)}?output_dir=${encodeURIComponent(currentOutputDir)}`;
+}
+
+function renderStructurePanel(kind, label, imageUrl, caption, metaLines = []) {
+  const metaHtml = metaLines
+    .filter((line) => line.value)
+    .map(
+      (line) =>
+        `<p class="structure-meta"><span class="structure-meta-label">${escapeHtml(line.label)}:</span> ${escapeHtml(line.value)}</p>`
+    )
+    .join("");
+
+  return `
+    <div class="viewer-structure-panel ${kind}">
+      <p class="structure-label">${escapeHtml(label)}</p>
+      <div class="viewer-structure">
+        ${
+          imageUrl
+            ? `<img src="${imageUrl}" alt="${escapeHtml(label)}" loading="lazy">`
+            : '<span class="text-sm text-slate-400">No structure image</span>'
+        }
+      </div>
+      ${caption ? `<p class="structure-caption">${escapeHtml(caption)}</p>` : ""}
+      ${metaHtml ? `<div class="structure-meta-list">${metaHtml}</div>` : ""}
+    </div>
+  `;
+}
+
+function renderStructureComparison(resultSet, metabolite, productImageUrl) {
+  const parent = resultSet.parent;
+  const parentImageUrl = parent?.image_name ? structureImageUrl(resultSet.id, parent.image_name) : "";
+  const parentMeta = parent
+    ? [
+        { label: "Formula", value: parent.formula },
+        { label: "Mass (+H)", value: parent.mass },
+      ]
+    : [];
+  const productMeta = [
+    { label: "Formula", value: metabolite.formula },
+    { label: "Mass (+H)", value: metabolite.mass },
+  ];
+
+  return `
+    <div class="structure-compare">
+      ${renderStructurePanel(
+        "parent",
+        "Original molecule",
+        parentImageUrl,
+        parent?.name || resultSet.label,
+        parentMeta
+      )}
+      <div class="structure-compare-divider" aria-hidden="true">→</div>
+      ${renderStructurePanel(
+        "product",
+        "Predicted product",
+        productImageUrl,
+        metabolite.figure_id || `Metabolite ${metabolite.index}`,
+        productMeta
+      )}
+    </div>
+  `;
+}
+
 function renderMetaboliteCard(resultSet, group, activeVariantIndex) {
   const metabolite = group.variants[activeVariantIndex] || group.variants[0];
-  const imageUrl = metabolite.image_name
-    ? `/api/results/image/${encodeURIComponent(resultSet.id)}/${encodeURIComponent(metabolite.image_name)}?output_dir=${encodeURIComponent(currentOutputDir)}`
-    : "";
+  const imageUrl = structureImageUrl(resultSet.id, metabolite.image_name);
   const tools = metabolite.tools.length
     ? metabolite.tools.map((tool) => `<span class="tool-badge">${escapeHtml(tool)}</span>`).join("")
     : '<span class="text-sm text-slate-400">No tool annotation</span>';
@@ -330,14 +395,8 @@ function renderMetaboliteCard(resultSet, group, activeVariantIndex) {
 
   return `
     <article class="viewer-card p-4" data-group-key="${group.key}">
-      <div class="grid gap-4 md:grid-cols-[220px_1fr]">
-        <div class="viewer-structure">
-          ${
-            imageUrl
-              ? `<img src="${imageUrl}" alt="Structure for ${escapeHtml(metabolite.figure_id || metabolite.index)}" loading="lazy">`
-              : '<span class="text-sm text-slate-400">No structure image</span>'
-          }
-        </div>
+      <div class="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+        ${renderStructureComparison(resultSet, metabolite, imageUrl)}
         <div class="space-y-3">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <h4 class="text-base font-semibold text-slate-900">${escapeHtml(metabolite.figure_id || `Metabolite ${metabolite.index}`)}</h4>

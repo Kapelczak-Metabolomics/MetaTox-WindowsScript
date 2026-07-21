@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -12,6 +13,12 @@ from chemistry_utils import (
     is_missing_iupac,
     load_iupac_cache,
     resolve_iupac_batch,
+)
+from structure_renderer import (
+    PARENT_IMAGE_NAME,
+    PARENT_META_NAME,
+    render_smiles_to_png,
+    smiles_formula_and_mass,
 )
 
 
@@ -43,6 +50,15 @@ class MetaboliteRecord:
 
 
 @dataclass
+class ParentStructure:
+    name: str
+    smiles: str
+    image_name: Optional[str] = None
+    formula: str = ""
+    mass: str = ""
+
+
+@dataclass
 class ResultSet:
     id: str
     label: str
@@ -50,6 +66,126 @@ class ResultSet:
     figure_dir: str
     metabolite_count: int
     metabolites: List[MetaboliteRecord]
+    parent: Optional[ParentStructure] = None
+
+
+def parse_input_molecules(input_file: Path) -> Dict[str, Dict[str, str]]:
+    molecules: Dict[str, Dict[str, str]] = {}
+    if not input_file.is_file():
+        return molecules
+
+    with input_file.open("r", encoding="utf-8-sig", errors="replace") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line:
+                continue
+            parts = line.split(",", 1)
+            if len(parts) != 2:
+                continue
+            name, smiles = parts[0].strip(), parts[1].strip()
+            if not name or not smiles:
+                continue
+            molecules[name] = {"name": name, "smiles": smiles}
+    return molecules
+
+
+def _write_parent_metadata(figures_dir: Path, parent: Dict[str, str], formula: str, mass: str) -> None:
+    figures_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "name": parent["name"],
+        "smiles": parent["smiles"],
+        "formula": formula,
+        "mass": mass,
+    }
+    (figures_dir / PARENT_META_NAME).write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def ensure_parent_structure(
+    output_dir: Path,
+    molecule_id: str,
+    parent: Dict[str, str],
+) -> Optional[ParentStructure]:
+    figures_dir = output_dir / f"{molecule_id}_figures"
+    formula, mass = smiles_formula_and_mass(parent["smiles"])
+    image_path = figures_dir / PARENT_IMAGE_NAME
+
+    if not image_path.is_file():
+        render_smiles_to_png(parent["smiles"], image_path)
+
+    _write_parent_metadata(figures_dir, parent, formula, mass)
+
+    if not image_path.is_file():
+        return ParentStructure(
+            name=parent["name"],
+            smiles=parent["smiles"],
+            image_name=None,
+            formula=formula,
+            mass=mass,
+        )
+
+    return ParentStructure(
+        name=parent["name"],
+        smiles=parent["smiles"],
+        image_name=PARENT_IMAGE_NAME,
+        formula=formula,
+        mass=mass,
+    )
+
+
+def ensure_parent_structures(output_dir: Path, input_file: Optional[Path] = None) -> None:
+    if input_file is None or not input_file.is_file():
+        return
+
+    molecules = parse_input_molecules(input_file)
+    if not molecules:
+        return
+
+    output_dir = output_dir.resolve()
+    for tsv_path in sorted(output_dir.glob("*_CompileResults.tsv")):
+        molecule_id = tsv_path.name.replace("_CompileResults.tsv", "")
+        parent = molecules.get(molecule_id)
+        if parent:
+            ensure_parent_structure(output_dir, molecule_id, parent)
+
+
+def load_parent_structure(output_dir: Path, molecule_id: str) -> Optional[ParentStructure]:
+    figures_dir = output_dir / f"{molecule_id}_figures"
+    meta_path = figures_dir / PARENT_META_NAME
+    image_path = figures_dir / PARENT_IMAGE_NAME
+
+    if meta_path.is_file():
+        try:
+            payload = json.loads(meta_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            payload = {}
+
+        smiles = (payload.get("smiles") or "").strip()
+        name = (payload.get("name") or molecule_id).strip()
+        if smiles and not image_path.is_file():
+            render_smiles_to_png(smiles, image_path)
+
+        return ParentStructure(
+            name=name or molecule_id,
+            smiles=smiles,
+            image_name=PARENT_IMAGE_NAME if image_path.is_file() else None,
+            formula=(payload.get("formula") or "").strip(),
+            mass=(payload.get("mass") or "").strip(),
+        )
+
+    if image_path.is_file():
+        return ParentStructure(
+            name=molecule_id,
+            smiles="",
+            image_name=PARENT_IMAGE_NAME,
+        )
+
+    return None
+
+
+def parent_to_dict(parent: Optional[ParentStructure]) -> Optional[Dict[str, object]]:
+    if parent is None:
+        return None
+    return asdict(parent)
 
 
 def _figure_to_image_name(figure_id: str) -> Optional[str]:
@@ -183,6 +319,7 @@ def load_results_for_viewer(output_dir: Path) -> Dict[str, object]:
                 figure_dir=str(figure_dir),
                 metabolite_count=len(metabolites),
                 metabolites=metabolites,
+                parent=load_parent_structure(output_dir, molecule_id),
             )
         )
 
@@ -191,7 +328,8 @@ def load_results_for_viewer(output_dir: Path) -> Dict[str, object]:
         "output_dir": str(output_dir),
         "result_sets": [
             {
-                **{key: value for key, value in asdict(result_set).items() if key != "metabolites"},
+                **{key: value for key, value in asdict(result_set).items() if key not in {"metabolites", "parent"}},
+                "parent": parent_to_dict(result_set.parent),
                 "metabolites": [metabolite_to_dict(item) for item in result_set.metabolites],
             }
             for result_set in result_sets
@@ -202,7 +340,7 @@ def load_results_for_viewer(output_dir: Path) -> Dict[str, object]:
 def resolve_result_image(output_dir: Path, molecule_id: str, image_name: str) -> Optional[Path]:
     if not image_name or "/" in image_name or "\\" in image_name or ".." in image_name:
         return None
-    if not re.fullmatch(r"Molecule_\d+\.png", image_name):
+    if not re.fullmatch(r"(Molecule_\d+|Input)\.png", image_name):
         return None
     if not re.fullmatch(r"[A-Za-z0-9._-]+", molecule_id):
         return None
