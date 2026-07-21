@@ -29,6 +29,8 @@ const viewerZipStatus = document.getElementById("viewer-zip-status");
 const viewerZipInputActive = document.getElementById("viewer-zip-input-active");
 const viewerZipUploadActive = document.getElementById("viewer-zip-upload-active");
 const viewerPdfExport = document.getElementById("viewer-pdf-export");
+const viewerPdfSelectAll = document.getElementById("viewer-pdf-select-all");
+const viewerPdfClearSelection = document.getElementById("viewer-pdf-clear-selection");
 const refreshEnvButton = document.getElementById("refresh-env");
 const envBadge = document.getElementById("env-badge");
 
@@ -39,6 +41,7 @@ let currentOutputDir = null;
 let viewerSourceLabel = "";
 let iupacRequestToken = 0;
 let variantSelections = {};
+let pdfExportSelections = {};
 
 function isMissingIupac(value) {
   const normalized = String(value || "")
@@ -121,6 +124,7 @@ function resetUiForNewQuery() {
   currentOutputDir = null;
   viewerSourceLabel = "";
   variantSelections = {};
+  pdfExportSelections = {};
   showViewerState(false);
   viewerList.innerHTML = "";
   viewerCount.textContent = "";
@@ -283,6 +287,77 @@ function renderPathwaySection(metabolite) {
   `;
 }
 
+function pdfSelectionKey(resultSetId, groupKey) {
+  return `${resultSetId}:${groupKey}`;
+}
+
+function isPdfCardSelected(resultSetId, groupKey) {
+  const key = pdfSelectionKey(resultSetId, groupKey);
+  return pdfExportSelections[key] !== false;
+}
+
+function setPdfCardSelected(resultSetId, groupKey, selected) {
+  pdfExportSelections[pdfSelectionKey(resultSetId, groupKey)] = selected;
+}
+
+function initializePdfSelections(resultSet, groups) {
+  groups.forEach((group) => {
+    const key = pdfSelectionKey(resultSet.id, group.key);
+    if (pdfExportSelections[key] === undefined) {
+      pdfExportSelections[key] = true;
+    }
+  });
+}
+
+function getActiveVariantIndex(resultSet, group) {
+  const selectionKey = pdfSelectionKey(resultSet.id, group.key);
+  return variantSelections[selectionKey] || 0;
+}
+
+function getSelectedPdfIndices(resultSet) {
+  const sortOrder = viewerSort ? viewerSort.value : "mz-asc";
+  const groups = buildDisplayGroups(resultSet.metabolites, sortOrder);
+  const indices = [];
+
+  groups.forEach((group) => {
+    if (!isPdfCardSelected(resultSet.id, group.key)) {
+      return;
+    }
+    const activeVariantIndex = getActiveVariantIndex(resultSet, group);
+    const metabolite = group.variants[activeVariantIndex] || group.variants[0];
+    if (metabolite) {
+      indices.push(metabolite.index);
+    }
+  });
+
+  return [...new Set(indices)].sort((left, right) => left - right);
+}
+
+function setAllPdfSelections(resultSet, selected) {
+  const sortOrder = viewerSort ? viewerSort.value : "mz-asc";
+  const groups = buildDisplayGroups(resultSet.metabolites, sortOrder);
+  groups.forEach((group) => {
+    setPdfCardSelected(resultSet.id, group.key, selected);
+  });
+
+  viewerList.querySelectorAll(".pdf-export-checkbox").forEach((checkbox) => {
+    checkbox.checked = selected;
+  });
+}
+
+function bindPdfCheckbox(resultSet, group) {
+  const checkbox = viewerList.querySelector(
+    `.pdf-export-checkbox[data-group-key="${group.key}"][data-result-set-id="${resultSet.id}"]`
+  );
+  if (!checkbox) {
+    return;
+  }
+
+  checkbox.addEventListener("change", () => {
+    setPdfCardSelected(resultSet.id, group.key, checkbox.checked);
+  });
+}
+
 function bindVariantSelect(resultSet, group) {
   const select = viewerList.querySelector(`.variant-select[data-group-key="${group.key}"]`);
   if (!select) {
@@ -298,6 +373,7 @@ function bindVariantSelect(resultSet, group) {
     }
     card.outerHTML = renderMetaboliteCard(resultSet, group, variantSelections[selectionKey]);
     bindVariantSelect(resultSet, group);
+    bindPdfCheckbox(resultSet, group);
     hydrateIupacNames(resultSet);
   });
 }
@@ -395,37 +471,51 @@ function renderMetaboliteCard(resultSet, group, activeVariantIndex) {
       : "";
 
   return `
-    <article class="viewer-card p-4" data-group-key="${group.key}">
-      <div class="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-        ${renderStructureComparison(resultSet, metabolite, imageUrl)}
-        <div class="space-y-3">
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <h4 class="text-base font-semibold text-slate-900">${escapeHtml(metabolite.figure_id || `Metabolite ${metabolite.index}`)}</h4>
-            <span class="text-sm text-slate-500">#${metabolite.index}</span>
-          </div>
-          ${variantSelect}
-          <div>
-            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">IUPAC name</p>
-            <p class="mt-1 text-sm leading-relaxed text-slate-800 iupac-name" data-index="${metabolite.index}">
-              ${escapeHtml(isMissingIupac(metabolite.iupac) ? "Resolving name..." : metabolite.iupac)}
-            </p>
-          </div>
-          <div class="grid gap-3 sm:grid-cols-2">
-            <div>
-              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Formula</p>
-              <p class="mt-1 text-sm text-slate-800">${escapeHtml(metabolite.formula || "NA")}</p>
+    <article class="viewer-card p-4" data-group-key="${group.key}" data-result-set-id="${resultSet.id}">
+      <div class="viewer-card-layout">
+        <label class="viewer-card-select" title="Include in PDF export">
+          <span class="sr-only">Include ${escapeHtml(metabolite.figure_id || `Metabolite ${metabolite.index}`)} in PDF export</span>
+          <input
+            type="checkbox"
+            class="pdf-export-checkbox"
+            data-group-key="${group.key}"
+            data-result-set-id="${resultSet.id}"
+            ${isPdfCardSelected(resultSet.id, group.key) ? "checked" : ""}
+          >
+        </label>
+        <div class="viewer-card-content">
+          <div class="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+            ${renderStructureComparison(resultSet, metabolite, imageUrl)}
+            <div class="space-y-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <h4 class="text-base font-semibold text-slate-900">${escapeHtml(metabolite.figure_id || `Metabolite ${metabolite.index}`)}</h4>
+                <span class="text-sm text-slate-500">#${metabolite.index}</span>
+              </div>
+              ${variantSelect}
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">IUPAC name</p>
+                <p class="mt-1 text-sm leading-relaxed text-slate-800 iupac-name viewer-text-wrap" data-index="${metabolite.index}">
+                  ${escapeHtml(isMissingIupac(metabolite.iupac) ? "Resolving name..." : metabolite.iupac)}
+                </p>
+              </div>
+              <div class="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Formula</p>
+                  <p class="mt-1 text-sm text-slate-800 viewer-text-wrap">${escapeHtml(metabolite.formula || "NA")}</p>
+                </div>
+                <div>
+                  <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Mass (+H)</p>
+                  <p class="mt-1 text-sm text-slate-800 viewer-text-wrap">${escapeHtml(metabolite.mass || "NA")}</p>
+                </div>
+              </div>
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">SMILES</p>
+                <p class="mt-1 break-all font-mono text-xs text-slate-700 viewer-text-wrap">${escapeHtml(metabolite.smiles || "")}</p>
+              </div>
+              <div class="flex flex-wrap gap-2">${tools}</div>
+              ${renderPathwaySection(metabolite)}
             </div>
-            <div>
-              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Mass (+H)</p>
-              <p class="mt-1 text-sm text-slate-800">${escapeHtml(metabolite.mass || "NA")}</p>
-            </div>
           </div>
-          <div>
-            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">SMILES</p>
-            <p class="mt-1 break-all font-mono text-xs text-slate-700">${escapeHtml(metabolite.smiles || "")}</p>
-          </div>
-          <div class="flex flex-wrap gap-2">${tools}</div>
-          ${renderPathwaySection(metabolite)}
         </div>
       </div>
     </article>
@@ -441,6 +531,7 @@ function renderViewerCards(resultSet) {
 
   const sortOrder = viewerSort ? viewerSort.value : "mz-asc";
   const groups = buildDisplayGroups(resultSet.metabolites, sortOrder);
+  initializePdfSelections(resultSet, groups);
   const uniqueMasses = groups.length;
   const totalHits = resultSet.metabolite_count;
   const duplicateHits = totalHits - uniqueMasses;
@@ -458,7 +549,10 @@ function renderViewerCards(resultSet) {
     })
     .join("");
 
-  groups.forEach((group) => bindVariantSelect(resultSet, group));
+  groups.forEach((group) => {
+    bindVariantSelect(resultSet, group);
+    bindPdfCheckbox(resultSet, group);
+  });
   hydrateIupacNames(resultSet);
 }
 
@@ -613,6 +707,7 @@ async function uploadViewerZip(fileInput, statusNode) {
     }
 
     variantSelections = {};
+    pdfExportSelections = {};
     await loadViewerData(data.output_dir, { sourceLabel: data.label || file.name });
     if (statusNode) {
       statusNode.textContent = `Loaded ${file.name}.`;
@@ -663,6 +758,7 @@ async function startRun() {
   viewerData = null;
   viewerSourceLabel = "";
   variantSelections = {};
+  pdfExportSelections = {};
   showViewerState(false);
 
   const formData = new FormData(optionsForm);
@@ -737,14 +833,27 @@ async function downloadViewerPdf() {
     return;
   }
 
-  const url = `/api/results/pdf?output_dir=${encodeURIComponent(currentOutputDir)}&molecule_id=${encodeURIComponent(resultSet.id)}`;
+  const indices = getSelectedPdfIndices(resultSet);
+  if (!indices.length) {
+    showAlert("Select at least one metabolite card to export.", "warning");
+    return;
+  }
+
+  const url = `/api/results/pdf?output_dir=${encodeURIComponent(currentOutputDir)}`;
   if (viewerPdfExport) {
     viewerPdfExport.disabled = true;
     viewerPdfExport.textContent = "Preparing PDF...";
   }
 
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        molecule_id: resultSet.id,
+        indices,
+      }),
+    });
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
       throw new Error(data.error || "Failed to generate the PDF report.");
@@ -759,7 +868,7 @@ async function downloadViewerPdf() {
     link.click();
     link.remove();
     URL.revokeObjectURL(objectUrl);
-    showAlert("PDF report downloaded.", "success");
+    showAlert(`PDF report downloaded (${indices.length} card${indices.length === 1 ? "" : "s"}).`, "success");
   } catch (error) {
     showAlert(error.message, "error");
   } finally {
@@ -813,6 +922,28 @@ if (viewerZipUploadActive && viewerZipInputActive) {
 
 if (viewerPdfExport) {
   viewerPdfExport.addEventListener("click", downloadViewerPdf);
+}
+
+if (viewerPdfSelectAll) {
+  viewerPdfSelectAll.addEventListener("click", () => {
+    const resultSet = getSelectedResultSet();
+    if (!resultSet) {
+      showAlert("No metabolite result set is available.", "warning");
+      return;
+    }
+    setAllPdfSelections(resultSet, true);
+  });
+}
+
+if (viewerPdfClearSelection) {
+  viewerPdfClearSelection.addEventListener("click", () => {
+    const resultSet = getSelectedResultSet();
+    if (!resultSet) {
+      showAlert("No metabolite result set is available.", "warning");
+      return;
+    }
+    setAllPdfSelections(resultSet, false);
+  });
 }
 
 runButton.addEventListener("click", startRun);

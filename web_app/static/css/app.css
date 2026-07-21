@@ -28,6 +28,34 @@
   border-radius: 1rem;
   background: #fff;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  overflow: hidden;
+}
+
+.viewer-card-layout {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.viewer-card-select {
+  padding-top: 0.25rem;
+}
+
+.viewer-card-select input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  cursor: pointer;
+  accent-color: #2563eb;
+}
+
+.viewer-card-content {
+  min-width: 0;
+}
+
+.viewer-text-wrap {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .viewer-structure {

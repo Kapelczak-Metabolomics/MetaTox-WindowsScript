@@ -238,9 +238,17 @@
                 </div>
                 <div class="flex flex-col gap-1">
                   <span class="text-sm font-medium text-slate-700">Export</span>
-                  <button id="viewer-pdf-export" type="button" class="inline-flex items-center rounded-lg border border-brand-600 bg-white px-3 py-2 text-sm font-medium text-brand-700 hover:bg-brand-50">
-                    Download PDF report
-                  </button>
+                  <div class="flex flex-wrap gap-2">
+                    <button id="viewer-pdf-select-all" type="button" class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                      Select all
+                    </button>
+                    <button id="viewer-pdf-clear-selection" type="button" class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                      Clear selection
+                    </button>
+                    <button id="viewer-pdf-export" type="button" class="inline-flex items-center rounded-lg border border-brand-600 bg-white px-3 py-2 text-sm font-medium text-brand-700 hover:bg-brand-50">
+                      Download PDF report
+                    </button>
+                  </div>
                 </div>
                 <div class="flex flex-col gap-1">
                   <span class="text-sm font-medium text-slate-700">Load zip</span>

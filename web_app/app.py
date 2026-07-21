@@ -20,7 +20,7 @@ from pipeline import (
     zip_output_directory,
 )
 from elmaven_export import elmaven_knowns_path, export_elmaven_knowns
-from pdf_report import export_pdf_report, pdf_report_path
+from pdf_report import export_pdf_report, export_pdf_report_bytes, pdf_report_path
 from results_viewer import load_results_for_viewer, resolve_iupac_for_smiles, resolve_result_image
 
 
@@ -309,6 +309,29 @@ def results_iupac_api():
     return jsonify({"names": names})
 
 
+def _pdf_download_name(molecule_id: str | None) -> str:
+    if molecule_id:
+        return f"MetaTox_report_{molecule_id}.pdf"
+    return "MetaTox_report.pdf"
+
+
+def _parse_metabolite_indices(payload: dict) -> list[int] | None:
+    if "indices" not in payload:
+        return None
+
+    raw_indices = payload.get("indices")
+    if not isinstance(raw_indices, list):
+        raise ValueError("Expected a JSON array field named 'indices'.")
+
+    indices: list[int] = []
+    for item in raw_indices:
+        try:
+            indices.append(int(item))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Each metabolite index must be an integer.") from exc
+    return indices
+
+
 @app.get("/api/results/pdf")
 def download_pdf_report():
     output_dir = _output_dir_from_request()
@@ -321,14 +344,45 @@ def download_pdf_report():
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": str(exc)}), 404
 
-    download_name = pdf_path.name
-    if molecule_id:
-        download_name = f"MetaTox_report_{molecule_id}.pdf"
-
     return send_file(
         pdf_path,
         as_attachment=True,
-        download_name=download_name,
+        download_name=_pdf_download_name(molecule_id),
+        mimetype="application/pdf",
+    )
+
+
+@app.post("/api/results/pdf")
+def download_pdf_report_selected():
+    output_dir = _output_dir_from_request()
+    if not output_dir:
+        return jsonify({"error": "No output directory is available."}), 404
+
+    payload = request.get_json(silent=True) or {}
+    molecule_id = (payload.get("molecule_id") or request.args.get("molecule_id") or "").strip() or None
+    try:
+        metabolite_indices = _parse_metabolite_indices(payload)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    if metabolite_indices is not None and not metabolite_indices:
+        return jsonify({"error": "Select at least one metabolite card to export."}), 400
+
+    try:
+        pdf_bytes = export_pdf_report_bytes(
+            output_dir,
+            molecule_id=molecule_id,
+            metabolite_indices=metabolite_indices,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": str(exc)}), 404
+
+    from io import BytesIO
+
+    return send_file(
+        BytesIO(pdf_bytes),
+        as_attachment=True,
+        download_name=_pdf_download_name(molecule_id),
         mimetype="application/pdf",
     )
 
