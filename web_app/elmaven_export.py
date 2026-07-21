@@ -68,75 +68,82 @@ def transformation_label(metabolite: MetaboliteRecord) -> str:
 
 
 def compound_name(
-    iupac: str,
-    molecule_id: str,
+    molecule_label: str,
     figure_id: str,
     index: int,
     transformation: str = "",
 ) -> str:
-    if not is_missing_iupac(iupac):
-        base_name = iupac.strip()
-    elif figure_id and figure_id.upper() != "NA":
-        base_name = f"{molecule_id}_{figure_id}"
+    label = (molecule_label or "").strip() or "compound"
+    if figure_id and figure_id.upper() != "NA":
+        stem = f"{label}_{figure_id}"
     else:
-        base_name = f"{molecule_id}_metabolite_{index}"
+        stem = f"{label}_metabolite_{index}"
 
     transformation = transformation.strip()
     if transformation:
-        return f"{base_name} ({transformation})"
-    return base_name
+        return f"{stem} ({transformation})"
+    return stem
 
 
-def _name_priority(name: str) -> int:
-    lowered = name.lower()
-    if lowered.startswith("name unavailable"):
-        return 0
-    if "_figure_" in lowered or "_metabolite_" in lowered:
-        return 1
-    return 2
+def compound_abbrev(iupac: str) -> str:
+    if is_missing_iupac(iupac):
+        return ""
+    return iupac.strip()
+
+
+def _row_sort_key(row: Dict[str, str]) -> tuple:
+    mass_value = row.get("mz") or ""
+    try:
+        mass_number = float(mass_value)
+    except ValueError:
+        mass_number = float("inf")
+    return (row.get("_molecule", ""), mass_number, int(row.get("_index", "0")))
 
 
 def collect_unique_knowns(result_sets: Iterable[ResultSet]) -> List[Dict[str, str]]:
-    """Collect deduplicated known-compound rows keyed by molecular formula."""
-    by_formula: Dict[str, Dict[str, str]] = {}
+    """Collect one El-MAVEN row per predicted metabolite."""
+    rows: List[Dict[str, str]] = []
+    seen: set[tuple[str, int]] = set()
 
     for result_set in result_sets:
+        molecule_label = (result_set.label or result_set.id or "").strip() or result_set.id
         for metabolite in result_set.metabolites:
             formula = normalize_formula(metabolite.formula)
             if not formula or formula.upper() == "NA":
                 continue
 
+            dedupe_key = (result_set.id, metabolite.index)
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+
             transformation = transformation_label(metabolite)
             name = compound_name(
-                metabolite.iupac,
-                result_set.id,
+                molecule_label,
                 metabolite.figure_id,
                 metabolite.index,
                 transformation=transformation,
             )
-            row = {
-                "compound": name,
-                "abbrev": "",
-                "formula": formula,
-                "id": "",
-                "mz": "",
-                "rt": "",
-                "Nr.C": "",
-                "Metabolic.Pathway": transformation,
-                "Mode": "",
-                "Batch": "",
-                "": "",
-            }
+            rows.append(
+                {
+                    "compound": name,
+                    "abbrev": compound_abbrev(metabolite.iupac),
+                    "formula": formula,
+                    "id": metabolite.figure_id if metabolite.figure_id.upper() != "NA" else "",
+                    "mz": (metabolite.mass or "").strip(),
+                    "rt": "",
+                    "Nr.C": "",
+                    "Metabolic.Pathway": transformation,
+                    "Mode": "",
+                    "Batch": "",
+                    "": "",
+                    "_molecule": molecule_label,
+                    "_index": str(metabolite.index),
+                }
+            )
 
-            existing = by_formula.get(formula)
-            if existing is None:
-                by_formula[formula] = row
-                continue
-
-            if _name_priority(name) > _name_priority(existing["compound"]):
-                by_formula[formula] = row
-
-    return [by_formula[formula] for formula in sorted(by_formula)]
+    sortable_rows = sorted(rows, key=_row_sort_key)
+    return [{key: value for key, value in row.items() if not key.startswith("_")} for row in sortable_rows]
 
 
 def write_elmaven_knowns(rows: List[Dict[str, str]], destination: Path) -> Path:

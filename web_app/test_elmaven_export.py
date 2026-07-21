@@ -6,6 +6,7 @@ from pathlib import Path
 from elmaven_export import (
     ELMAVEN_FILENAME,
     collect_unique_knowns,
+    compound_abbrev,
     compound_name,
     export_elmaven_knowns,
     format_pathway_entry,
@@ -49,14 +50,24 @@ def test_normalize_formula():
     assert normalize_formula(" C4 H9 NO2 ") == "C4H9NO2"
 
 
-def test_compound_name_prefers_iupac():
-    assert compound_name("ethanol", "Drug", "Figure_1", 1) == "ethanol"
-    assert compound_name("Name unavailable", "Drug", "Figure_1", 1) == "Drug_Figure_1"
-    assert compound_name("", "Drug", "NA", 2) == "Drug_metabolite_2"
+def test_compound_name_includes_molecule_figure_and_transformation():
+    assert compound_name("JNJ-40418677", "Figure_171", 171) == "JNJ-40418677_Figure_171"
+    assert compound_name("Drug", "Figure_1", 1) == "Drug_Figure_1"
+    assert compound_name("Drug", "NA", 2) == "Drug_metabolite_2"
     assert (
-        compound_name("ethanol", "Drug", "Figure_1", 1, transformation="Glycine conjugation")
-        == "ethanol (Glycine conjugation)"
+        compound_name("JNJ-40418677", "Figure_171", 171, transformation="alpha-Hydroxylation of carbonyl group")
+        == "JNJ-40418677_Figure_171 (alpha-Hydroxylation of carbonyl group)"
     )
+    assert (
+        compound_name("Drug", "Figure_1", 1, transformation="Glycine conjugation")
+        == "Drug_Figure_1 (Glycine conjugation)"
+    )
+
+
+def test_compound_abbrev_uses_iupac():
+    assert compound_abbrev("ethanol") == "ethanol"
+    assert compound_abbrev("Name unavailable") == ""
+    assert compound_abbrev("") == ""
 
 
 def test_format_pathway_entry():
@@ -80,7 +91,7 @@ def test_transformation_label_prefers_readable_pathways():
     assert transformation_label(metabolite) == "Glycine conjugation; glycination (aliphatic carboxyl)"
 
 
-def test_collect_unique_knowns_dedupes_by_formula():
+def test_collect_unique_knowns_keeps_distinct_metabolites_with_same_formula():
     result_sets = [
         ResultSet(
             id="Drug",
@@ -107,6 +118,7 @@ def test_collect_unique_knowns_dedupes_by_formula():
                     iupac="GABA",
                     figure_id="Figure_2",
                     image_name="Molecule_2.png",
+                    biotrans_pathway="Oxidation",
                 ),
                 MetaboliteRecord(
                     index=3,
@@ -122,12 +134,16 @@ def test_collect_unique_knowns_dedupes_by_formula():
     ]
 
     rows = collect_unique_knowns(result_sets)
-    assert len(rows) == 2
+    assert len(rows) == 3
     assert {row["formula"] for row in rows} == {"C4H9NO2", "C2H6O"}
-    c4_row = next(row for row in rows if row["formula"] == "C4H9NO2")
-    assert c4_row["compound"] == "2-Aminobutyrate (Glycine conjugation)"
-    assert c4_row["Metabolic.Pathway"] == "Glycine conjugation"
-    assert c4_row["mz"] == ""
+    figure_1 = next(row for row in rows if row["id"] == "Figure_1")
+    figure_2 = next(row for row in rows if row["id"] == "Figure_2")
+    assert figure_1["compound"] == "Drug_Figure_1 (Glycine conjugation)"
+    assert figure_1["abbrev"] == "2-Aminobutyrate"
+    assert figure_1["Metabolic.Pathway"] == "Glycine conjugation"
+    assert figure_1["mz"] == "104.07"
+    assert figure_2["compound"] == "Drug_Figure_2 (Oxidation)"
+    assert figure_2["abbrev"] == "GABA"
 
 
 def test_export_elmaven_knowns_from_output_dir(tmp_path: Path):
@@ -191,12 +207,14 @@ def test_export_elmaven_knowns_from_output_dir(tmp_path: Path):
         rows = list(reader)
 
     assert len(rows) == 2
-    assert rows[0]["formula"] == "C2H6O"
-    assert rows[0]["compound"] == "ethanol"
-    assert rows[0]["mz"] == ""
-    assert rows[1]["formula"] == "C4H9NO2"
-    assert rows[1]["compound"] == "GABA (Glycine conjugation)"
-    assert rows[1]["Metabolic.Pathway"] == "Glycine conjugation"
+    ethanol_row = next(row for row in rows if row["formula"] == "C2H6O")
+    gaba_row = next(row for row in rows if row["formula"] == "C4H9NO2")
+    assert ethanol_row["compound"] == "Drug_Figure_1"
+    assert ethanol_row["abbrev"] == "ethanol"
+    assert ethanol_row["mz"] == "47.0"
+    assert gaba_row["compound"] == "Drug_Figure_2 (Glycine conjugation)"
+    assert gaba_row["abbrev"] == "GABA"
+    assert gaba_row["Metabolic.Pathway"] == "Glycine conjugation"
 
 
 def test_load_result_sets_reads_tsv(tmp_path: Path):
