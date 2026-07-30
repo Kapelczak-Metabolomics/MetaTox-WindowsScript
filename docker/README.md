@@ -14,6 +14,7 @@ Run MetaTox as a self-contained Docker service with a browser-based GUI. No WSL,
 - Docker Desktop (Windows/macOS) or Docker Engine (Linux)
 - ~8 GB free disk space for Singularity images on first run
 - Internet access on first prediction (downloads BioTransformer, SygMa, GLORYx, MetaTrans images)
+- Internet access for GLORYx predictions (queries the public NERDD API)
 
 ### macOS (Apple Silicon)
 
