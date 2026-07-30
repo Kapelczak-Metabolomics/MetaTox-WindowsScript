@@ -499,6 +499,8 @@ do
         set -e
         set -o pipefail
         local mol="${tab_molecule[${indice}]}"
+        local raw_csv="/tmp/${mol}_Biotransformer3_v1.csv"
+        local final_csv="${tmp}${mol}_Biotransformer3.csv"
 
         singularity exec "${SINGULARITY_COMMON_ARGS[@]}" -B "${tmp}:/tmp" \
         https://depot.galaxyproject.org/singularity/biotransformer:3.0.20230403--hdfd78af_0 biotransformer \
@@ -507,14 +509,22 @@ do
         -cm "${cmode}" \
         -s "${nstep}" \
         -ismi "${tab_smiles[${indice}]}" \
-        -ocsv "/tmp/${mol}_Biotransformer3_v1.csv" 2>&1 | tee -a "${log}${mol}_Biotransformer3_log.txt"
+        -ocsv "${raw_csv}" 2>&1 | tee -a "${log}${mol}_Biotransformer3_log.txt"
+
+        if [ ! -s "${raw_csv}" ]; then
+            {
+                echo "WARNING: BioTransformer produced zero metabolites for ${mol}; continuing with an empty result file."
+                printf '%s\n' "SMILES"
+            } > "${final_csv}"
+            return 0
+        fi
 
         singularity exec "${SINGULARITY_COMMON_ARGS[@]}" -B "${tmp}:/tmp" library://abourdais/default/rdkit csvformat \
-        -D ";" "/tmp/${mol}_Biotransformer3_v1.csv" \
+        -D ";" "${raw_csv}" \
         | gawk -v RS='"' 'NR % 2 == 0 { gsub(/\n/, "") } { printf("%s%s", $0, RT) }' \
-        > "${tmp}${mol}_Biotransformer3.csv"
+        > "${final_csv}"
 
-        rm "${tmp}${mol}_Biotransformer3_v1.csv"
+        rm -f "${raw_csv}"
     }
 
     if ! run_with_spinner "Biotransformer3 ..." biotransformer_job; then
@@ -554,6 +564,18 @@ do
     gloryx_job () {
         set -e
         local mol="${tab_molecule[${indice}]}"
+        local output_csv="${tmp}${mol}_Gloryx.csv"
+        local gloryx_script="${DirScripts}gloryx_api.py"
+
+        if [ -f "${gloryx_script}" ]; then
+            python3 "${gloryx_script}" \
+                --phase "${phase_gloryx}" \
+                --smile "${tab_smiles[${indice}]}" \
+                --output "${output_csv}" \
+                > "${log}${mol}_Gloryx_log.txt" 2>&1
+            return 0
+        fi
+
         singularity run "${SINGULARITY_COMMON_ARGS[@]}" -B "${tmp}:/tmp" library://abourdais/default/gloryx_api \
         --phase $phase_gloryx \
         --smile "${tab_smiles[${indice}]}" \
