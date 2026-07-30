@@ -508,10 +508,12 @@ do
 
         rm -f "${raw_csv}" "${final_csv}"
 
+        # JNA/InChI inside BioTransformer hardcode /tmp; bind MetaTox tmp there so it is writable.
         singularity exec "${SINGULARITY_COMMON_ARGS[@]}" "${SINGULARITY_WORKDIR_BIND[@]}" \
-        --env "HOME=${runtime_dir}" \
-        --env "TMPDIR=${tmp}" \
-        --env "JAVA_OPTS=-Xmx6g -Djava.io.tmpdir=${tmp}" \
+        -B "${tmp}:/tmp" \
+        --env "TMPDIR=/tmp" \
+        --env "JNA_TMPDIR=/tmp" \
+        --env "JAVA_TOOL_OPTIONS=-Xmx6g -Djava.io.tmpdir=/tmp -Djna.tmpdir=/tmp" \
         https://depot.galaxyproject.org/singularity/biotransformer:3.0.20230403--hdfd78af_0 biotransformer \
         -b "${type}" \
         -k "pred" \
@@ -520,9 +522,14 @@ do
         -ismi "${tab_smiles[${indice}]}" \
         -ocsv "${raw_csv}" 2>&1 | tee -a "${log_file}"
 
+        if grep -q "JNA temporary directory '/tmp' is not writable" "${log_file}"; then
+            echo "ERROR: BioTransformer could not write Java/JNA temp files inside the container." >&2
+            return 1
+        fi
+
         if [ ! -s "${raw_csv}" ]; then
-            if grep -Eq "Unique metabolites: 0|Unique Biotransformations: 0" "${log_file}"; then
-                echo "ERROR: BioTransformer reported zero metabolites for ${mol}. Check ${log_file} for Java or database errors." >&2
+            if grep -Eq "Unique metabolites: 0|Unique Biotransformations: 0|Exception in thread|UnsatisfiedLinkError" "${log_file}"; then
+                echo "ERROR: BioTransformer failed for ${mol}. Check ${log_file} for Java or database errors." >&2
                 return 1
             fi
             {

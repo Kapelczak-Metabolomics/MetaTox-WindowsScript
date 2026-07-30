@@ -28,10 +28,10 @@ echo "OK: SygMa produced ${TMP_TEST}/smoke_sygma.sdf"
 echo "==> BioTransformer image can predict ethanol metabolites"
 mkdir -p "${TMP_TEST}/biotrans-runtime"
 rm -f "${TMP_TEST}/smoke_biotrans.csv"
-timeout 600 singularity exec --no-mount cwd,home,tmp -B "${APP_ROOT}:${APP_ROOT}" \
-  --env "HOME=${TMP_TEST}/biotrans-runtime" \
-  --env "TMPDIR=${TMP_TEST}" \
-  --env "JAVA_OPTS=-Xmx6g -Djava.io.tmpdir=${TMP_TEST}" \
+timeout 600 singularity exec --no-mount cwd,home,tmp -B "${APP_ROOT}:${APP_ROOT}" -B "${TMP_TEST}:/tmp" \
+  --env "TMPDIR=/tmp" \
+  --env "JNA_TMPDIR=/tmp" \
+  --env "JAVA_TOOL_OPTIONS=-Xmx6g -Djava.io.tmpdir=/tmp -Djna.tmpdir=/tmp" \
   https://depot.galaxyproject.org/singularity/biotransformer:3.0.20230403--hdfd78af_0 biotransformer \
   -b allHuman -k pred -cm 3 -s 1 -ismi "${SMILES}" \
   -ocsv "${TMP_TEST}/smoke_biotrans.csv" > "${TMP_TEST}/smoke_biotrans.log" 2>&1
