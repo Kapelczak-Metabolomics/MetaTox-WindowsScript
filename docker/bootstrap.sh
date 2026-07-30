@@ -68,10 +68,10 @@ if [[ "${METATOX_PREFETCH_IMAGES:-false}" == "true" ]]; then
   pull_image "RDKit" library://abourdais/default/rdkit || prefetch_failures=$((prefetch_failures + 1))
   pull_image "GLORYx" library://abourdais/default/gloryx_api || prefetch_failures=$((prefetch_failures + 1))
   pull_image "MetaTrans" library://abourdais/default/metatrans || prefetch_failures=$((prefetch_failures + 1))
-  if [ -x "${APP_ROOT}/Scripts/prepare_biotransformer_runtime.sh" ]; then
+  if [ -f "${APP_ROOT}/Scripts/prepare_biotransformer_runtime.py" ]; then
     echo "  Preparing writable BioTransformer runtime..."
     if BIOTRANSFORMER_RUNTIME="${BIOTRANSFORMER_RUNTIME:-/var/lib/metatox/biotransformer-runtime}" \
-      "${APP_ROOT}/Scripts/prepare_biotransformer_runtime.sh" prepare; then
+      python3 "${APP_ROOT}/Scripts/prepare_biotransformer_runtime.py" prepare; then
       echo "  OK: BioTransformer runtime"
     else
       echo "  WARNING: failed to prepare BioTransformer runtime"

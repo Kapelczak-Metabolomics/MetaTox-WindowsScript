@@ -26,18 +26,29 @@ singularity run --no-mount cwd,home,tmp -B "${TMP_TEST}:/tmp" \
 test -s "${TMP_TEST}/smoke_sygma.sdf"
 echo "OK: SygMa produced ${TMP_TEST}/smoke_sygma.sdf"
 
-echo "==> BioTransformer writable runtime can predict nicotine metabolites"
+echo "==> BioTransformer complete runtime can predict thymol metabolites"
 mkdir -p "${TMP_TEST}"
 rm -f "${TMP_TEST}/smoke_biotrans.csv"
-NICOTINE_SMILES='CN1CCC[C@H]1c2cccnc2'
-chmod +x "${APP_ROOT}/Scripts/prepare_biotransformer_runtime.sh"
-bash "${APP_ROOT}/Scripts/prepare_biotransformer_runtime.sh" run \
+# Official BioTransformer example molecule (should produce metabolites).
+THYMOL_SMILES='CC(C)C1=CC=C(C)C=C1O'
+# Force rebuild of incomplete runtimes extracted from the biocontainer.
+rm -f "${BIOTRANSFORMER_RUNTIME}/.ready" "${BIOTRANSFORMER_RUNTIME}/.ready-complete-v1"
+python3 "${APP_ROOT}/Scripts/prepare_biotransformer_runtime.py" run \
   --bt-type allHuman \
   --cmode 3 \
-  --nstep 1 \
-  --smiles "${NICOTINE_SMILES}" \
+  --nstep 2 \
+  --smiles "${THYMOL_SMILES}" \
   --output "${TMP_TEST}/smoke_biotrans.csv" > "${TMP_TEST}/smoke_biotrans.log" 2>&1
 test -s "${TMP_TEST}/smoke_biotrans.csv"
+if ! ls "${BIOTRANSFORMER_RUNTIME}/supportfiles" >/dev/null 2>&1; then
+  echo "BioTransformer runtime is missing supportfiles:" >&2
+  ls -la "${BIOTRANSFORMER_RUNTIME}" >&2 || true
+  exit 1
+fi
+if [ ! -f "${BIOTRANSFORMER_RUNTIME}/config.json" ]; then
+  echo "BioTransformer runtime is missing config.json" >&2
+  exit 1
+fi
 if grep -Eq "UnsatisfiedLinkError|JNA temporary directory|/tmp' is not writable|Exception in thread" "${TMP_TEST}/smoke_biotrans.log"; then
   echo "BioTransformer Java/JNA failure:" >&2
   tail -n 80 "${TMP_TEST}/smoke_biotrans.log" >&2
@@ -45,7 +56,7 @@ if grep -Eq "UnsatisfiedLinkError|JNA temporary directory|/tmp' is not writable|
 fi
 ROW_COUNT="$(tail -n +2 "${TMP_TEST}/smoke_biotrans.csv" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')"
 if [ "${ROW_COUNT}" -le 0 ]; then
-  echo "BioTransformer predicted zero metabolites for nicotine:" >&2
+  echo "BioTransformer predicted zero metabolites for thymol:" >&2
   tail -n 80 "${TMP_TEST}/smoke_biotrans.log" >&2
   exit 1
 fi

@@ -285,10 +285,14 @@ Meta-Predictor is not included in the default Docker image. Leave it **disabled*
 Nested Apptainer on Docker Desktop often cannot use BioTransformer's on-image
 `database` / `supportfiles`, so the tool exits in ~2s with `Unique metabolites: 0`.
 
-MetaTox now extracts the BioTransformer jar + database into a writable Docker
-volume (`metatox-biotransformer-runtime`) and runs `java -jar` from that directory.
+MetaTox now downloads the **complete official BioTransformer package**
+(jar + `btkb` + `supportfiles` + `config.json`) into the writable Docker volume
+`metatox-biotransformer-runtime`, then runs `java -jar` from that directory.
 
-After rebuild:
+The Galaxy/biocontainer image alone is often missing `supportfiles` / `config.json`,
+which causes BioTransformer to exit in ~2–3 seconds with `Unique metabolites: 0`.
+
+After rebuild, reset any incomplete runtime and verify:
 
 ```powershell
 # From your MetaTox repo directory:

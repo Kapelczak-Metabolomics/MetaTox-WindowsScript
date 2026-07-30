@@ -503,21 +503,17 @@ do
         local raw_csv="${tmp}${mol}_Biotransformer3_v1.csv"
         local final_csv="${tmp}${mol}_Biotransformer3.csv"
         local log_file="${log}${mol}_Biotransformer3_log.txt"
-        local helper="${DirScripts}prepare_biotransformer_runtime.sh"
+        local helper="${DirScripts}prepare_biotransformer_runtime.py"
         local bt_exit=0
 
         rm -f "${raw_csv}" "${final_csv}"
         : > "${log_file}"
 
-        if [ ! -x "${helper}" ]; then
-            chmod +x "${helper}" || true
-        fi
-
         export BIOTRANSFORMER_RUNTIME="${BIOTRANSFORMER_RUNTIME:-/var/lib/metatox/biotransformer-runtime}"
         export BIOTRANSFORMER_IMAGE="${BIOTRANSFORMER_IMAGE:-https://depot.galaxyproject.org/singularity/biotransformer:3.0.20230403--hdfd78af_0}"
 
         set +e
-        bash "${helper}" run \
+        python3 "${helper}" run \
             --bt-type "${type}" \
             --cmode "${cmode}" \
             --nstep "${nstep}" \
@@ -545,9 +541,13 @@ do
         metabolite_rows="$(tail -n +2 "${raw_csv}" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')"
         if [ "${metabolite_rows}" = "0" ]; then
             echo "WARNING: BioTransformer returned 0 metabolites for ${mol}." | tee -a "${log_file}"
-        else
-            echo "BioTransformer predicted ${metabolite_rows} metabolite row(s) for ${mol}." | tee -a "${log_file}"
+            # Keep an empty formatted CSV so compilation can continue with other tools.
+            printf '%s\n' "SMILES" > "${final_csv}"
+            rm -f "${raw_csv}"
+            return 0
         fi
+
+        echo "BioTransformer predicted ${metabolite_rows} metabolite row(s) for ${mol}." | tee -a "${log_file}"
 
         singularity exec "${SINGULARITY_COMMON_ARGS[@]}" -B "${tmp}:/tmp" \
             library://abourdais/default/rdkit csvformat \
