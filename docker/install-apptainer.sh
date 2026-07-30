@@ -9,13 +9,18 @@ install_amd64_deb() {
   local base="apptainer_${APPTAINER_VERSION}_amd64.deb"
   local suid="apptainer-suid_${APPTAINER_VERSION}_amd64.deb"
   local url_base="https://github.com/apptainer/apptainer/releases/download/v${APPTAINER_VERSION}"
+  local work_dir
+  work_dir="$(mktemp -d)"
 
   echo "Installing Apptainer ${APPTAINER_VERSION} + apptainer-suid from GitHub (${ARCH})..."
-  wget -q "${url_base}/${base}"
-  wget -q "${url_base}/${suid}"
-  apt-get update
-  apt-get install -y --no-install-recommends "./${base}" "./${suid}"
-  rm -f "./${base}" "./${suid}"
+  (
+    cd "${work_dir}"
+    wget -q "${url_base}/${base}"
+    wget -q "${url_base}/${suid}"
+    apt-get update
+    apt-get install -y --no-install-recommends "./${base}" "./${suid}"
+  )
+  rm -rf "${work_dir}"
 }
 
 install_arm64_ppa() {
@@ -44,6 +49,9 @@ esac
 
 rm -rf /var/lib/apt/lists/*
 ln -sf /usr/bin/apptainer /usr/local/bin/singularity
-chmod +x "${SCRIPT_DIR}/configure-apptainer.sh"
-"${SCRIPT_DIR}/configure-apptainer.sh"
+if [[ -x "${SCRIPT_DIR}/configure-apptainer.sh" ]]; then
+  "${SCRIPT_DIR}/configure-apptainer.sh"
+else
+  echo "WARNING: configure-apptainer.sh not found beside install-apptainer.sh" >&2
+fi
 apptainer --version

@@ -45,10 +45,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ARG TARGETARCH
 ARG APPTAINER_VERSION=1.3.6
-COPY docker/install-apptainer.sh /tmp/install-apptainer.sh
-RUN chmod +x /tmp/install-apptainer.sh \
-    && TARGETARCH="${TARGETARCH}" APPTAINER_VERSION="${APPTAINER_VERSION}" /tmp/install-apptainer.sh \
-    && rm -f /tmp/install-apptainer.sh
+COPY docker/install-apptainer.sh docker/configure-apptainer.sh /tmp/docker/
+RUN chmod +x /tmp/docker/install-apptainer.sh /tmp/docker/configure-apptainer.sh \
+    && TARGETARCH="${TARGETARCH}" APPTAINER_VERSION="${APPTAINER_VERSION}" /tmp/docker/install-apptainer.sh \
+    && rm -rf /tmp/docker
 
 COPY web_app/requirements.txt /tmp/requirements.txt
 COPY docker/requirements-companion.txt /tmp/requirements-companion.txt

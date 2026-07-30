@@ -53,6 +53,39 @@ Stop the service:
 docker compose down
 ```
 
+## Disk space and cached Singularity images
+
+MetaTox stores downloaded Singularity/Apptainer images in a **named Docker volume**:
+
+```text
+metatox-singularity-cache  ->  /var/lib/metatox/singularity-cache
+```
+
+This cache can be several gigabytes after BioTransformer, SygMa, GLORYx, and MetaTrans have been downloaded.
+
+| Action | Container removed? | Singularity cache removed? | Your result files removed? |
+|--------|------------------|----------------------------|----------------------------|
+| `docker compose down` | Yes | **No** (volume kept) | **No** (`./data/output` is a bind mount) |
+| `docker compose down -v` | Yes | **Yes** | **No** |
+| Delete container in Docker Desktop | Yes | **No** (unless you also delete the volume) | **No** |
+| `docker compose build --no-cache` | N/A | **No** | **No** |
+
+To remove the container **and** reclaim cached Singularity image space:
+
+```bash
+docker compose down -v
+```
+
+To remove only the cache volume while keeping the compose project definition:
+
+```bash
+docker volume rm metatox-singularity-cache
+```
+
+Your prediction outputs in `./data/output/` live on the host filesystem and are **not** deleted when the container is removed.
+
+Old Docker **build** layers from previous `docker compose build` runs are managed separately by Docker Desktop (use **Build cache** / **Clean / Purge data** in Docker Desktop if you need to reclaim that space).
+
 ## First run
 
 1. Open the **Run** tab

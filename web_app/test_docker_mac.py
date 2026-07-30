@@ -28,6 +28,7 @@ def test_dockerfile_uses_install_script():
     dockerfile = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
     assert "TARGETARCH" in dockerfile
     assert "docker/install-apptainer.sh" in dockerfile
+    assert "docker/configure-apptainer.sh" in dockerfile
     assert "apptainer_1.3.6_amd64.deb" not in dockerfile
 
 
