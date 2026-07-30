@@ -220,6 +220,7 @@ unset APPTAINER_BINDPATH SINGULARITY_BINDPATH
 export APPTAINER_NO_MOUNT="${APPTAINER_NO_MOUNT:-cwd,home,tmp,/etc/localtime}"
 export SINGULARITY_NO_MOUNT="${SINGULARITY_NO_MOUNT:-cwd,home,tmp,/etc/localtime}"
 SINGULARITY_COMMON_ARGS=(--no-mount cwd,home,tmp)
+SINGULARITY_WORKDIR_BIND=(-B "${work_dir}:${work_dir}")
 
 tmp="${work_dir}/tmp/"
 if test -d "$tmp"; then
@@ -499,27 +500,39 @@ do
         set -e
         set -o pipefail
         local mol="${tab_molecule[${indice}]}"
-        local raw_csv="/tmp/${mol}_Biotransformer3_v1.csv"
+        local raw_csv="${tmp}${mol}_Biotransformer3_v1.csv"
         local final_csv="${tmp}${mol}_Biotransformer3.csv"
+        local runtime_dir="${tmp}biotrans-runtime"
+        local log_file="${log}${mol}_Biotransformer3_log.txt"
+        mkdir -p "${runtime_dir}"
 
-        singularity exec "${SINGULARITY_COMMON_ARGS[@]}" -B "${tmp}:/tmp" \
+        rm -f "${raw_csv}" "${final_csv}"
+
+        singularity exec "${SINGULARITY_COMMON_ARGS[@]}" "${SINGULARITY_WORKDIR_BIND[@]}" \
+        --env "HOME=${runtime_dir}" \
+        --env "TMPDIR=${tmp}" \
+        --env "JAVA_OPTS=-Xmx6g -Djava.io.tmpdir=${tmp}" \
         https://depot.galaxyproject.org/singularity/biotransformer:3.0.20230403--hdfd78af_0 biotransformer \
         -b "${type}" \
         -k "pred" \
         -cm "${cmode}" \
         -s "${nstep}" \
         -ismi "${tab_smiles[${indice}]}" \
-        -ocsv "${raw_csv}" 2>&1 | tee -a "${log}${mol}_Biotransformer3_log.txt"
+        -ocsv "${raw_csv}" 2>&1 | tee -a "${log_file}"
 
         if [ ! -s "${raw_csv}" ]; then
+            if grep -Eq "Unique metabolites: 0|Unique Biotransformations: 0" "${log_file}"; then
+                echo "ERROR: BioTransformer reported zero metabolites for ${mol}. Check ${log_file} for Java or database errors." >&2
+                return 1
+            fi
             {
-                echo "WARNING: BioTransformer produced zero metabolites for ${mol}; continuing with an empty result file."
+                echo "WARNING: BioTransformer did not create ${raw_csv}; continuing with an empty result file."
                 printf '%s\n' "SMILES"
             } > "${final_csv}"
             return 0
         fi
 
-        singularity exec "${SINGULARITY_COMMON_ARGS[@]}" -B "${tmp}:/tmp" library://abourdais/default/rdkit csvformat \
+        singularity exec "${SINGULARITY_COMMON_ARGS[@]}" "${SINGULARITY_WORKDIR_BIND[@]}" library://abourdais/default/rdkit csvformat \
         -D ";" "${raw_csv}" \
         | gawk -v RS='"' 'NR % 2 == 0 { gsub(/\n/, "") } { printf("%s%s", $0, RT) }' \
         > "${final_csv}"
