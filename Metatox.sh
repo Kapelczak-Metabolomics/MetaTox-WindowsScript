@@ -220,7 +220,6 @@ unset APPTAINER_BINDPATH SINGULARITY_BINDPATH
 export APPTAINER_NO_MOUNT="${APPTAINER_NO_MOUNT:-cwd,home,tmp,/etc/localtime}"
 export SINGULARITY_NO_MOUNT="${SINGULARITY_NO_MOUNT:-cwd,home,tmp,/etc/localtime}"
 SINGULARITY_COMMON_ARGS=(--no-mount cwd,home,tmp)
-SINGULARITY_WORKDIR_BIND=(-B "${work_dir}:${work_dir}")
 
 tmp="${work_dir}/tmp/"
 if test -d "$tmp"; then
@@ -500,49 +499,69 @@ do
         set -e
         set -o pipefail
         local mol="${tab_molecule[${indice}]}"
+        local smiles="${tab_smiles[${indice}]}"
         local raw_csv="${tmp}${mol}_Biotransformer3_v1.csv"
+        local raw_csv_in_container="/tmp/${mol}_Biotransformer3_v1.csv"
         local final_csv="${tmp}${mol}_Biotransformer3.csv"
-        local runtime_dir="${tmp}biotrans-runtime"
         local log_file="${log}${mol}_Biotransformer3_log.txt"
-        mkdir -p "${runtime_dir}"
+        local bt_exit=0
 
         rm -f "${raw_csv}" "${final_csv}"
+        : > "${log_file}"
 
-        # JNA/InChI inside BioTransformer hardcode /tmp; bind MetaTox tmp there so it is writable.
-        singularity exec "${SINGULARITY_COMMON_ARGS[@]}" "${SINGULARITY_WORKDIR_BIND[@]}" \
-        -B "${tmp}:/tmp" \
-        --env "TMPDIR=/tmp" \
-        --env "JNA_TMPDIR=/tmp" \
-        --env "JAVA_TOOL_OPTIONS=-Xmx6g -Djava.io.tmpdir=/tmp -Djna.tmpdir=/tmp" \
-        https://depot.galaxyproject.org/singularity/biotransformer:3.0.20230403--hdfd78af_0 biotransformer \
-        -b "${type}" \
-        -k "pred" \
-        -cm "${cmode}" \
-        -s "${nstep}" \
-        -ismi "${tab_smiles[${indice}]}" \
-        -ocsv "${raw_csv}" 2>&1 | tee -a "${log_file}"
+        # Critical for nested Docker/Apptainer:
+        # - --writable-tmpfs lets BioTransformer open on-image database/supportfiles
+        #   (HSQLDB/SQLite lock files). Without this it "succeeds" with 0 metabolites.
+        # - Bind MetaTox tmp to /tmp for JNA/InChI native libraries and CSV output.
+        set +e
+        singularity exec \
+            "${SINGULARITY_COMMON_ARGS[@]}" \
+            --writable-tmpfs \
+            -B "${tmp}:/tmp" \
+            --env "TMPDIR=/tmp" \
+            --env "JNA_TMPDIR=/tmp" \
+            --env "JAVA_TOOL_OPTIONS=-Xmx6g -Djava.io.tmpdir=/tmp -Djna.tmpdir=/tmp" \
+            https://depot.galaxyproject.org/singularity/biotransformer:3.0.20230403--hdfd78af_0 \
+            biotransformer \
+            -Xms512m -Xmx6g \
+            -b "${type}" \
+            -k "pred" \
+            -cm "${cmode}" \
+            -s "${nstep}" \
+            -ismi "${smiles}" \
+            -ocsv "${raw_csv_in_container}" 2>&1 | tee -a "${log_file}"
+        bt_exit=${PIPESTATUS[0]}
+        set -e
 
-        if grep -q "JNA temporary directory '/tmp' is not writable" "${log_file}"; then
-            echo "ERROR: BioTransformer could not write Java/JNA temp files inside the container." >&2
+        if [ "${bt_exit}" -ne 0 ]; then
+            echo "ERROR: BioTransformer exited with code ${bt_exit} for ${mol}." >&2
+            return "${bt_exit}"
+        fi
+
+        if grep -Eq "JNA temporary directory '/tmp' is not writable|UnsatisfiedLinkError|Exception in thread" "${log_file}"; then
+            echo "ERROR: BioTransformer Java/JNA runtime failed for ${mol}. Check ${log_file}." >&2
             return 1
         fi
 
         if [ ! -s "${raw_csv}" ]; then
-            if grep -Eq "Unique metabolites: 0|Unique Biotransformations: 0|Exception in thread|UnsatisfiedLinkError" "${log_file}"; then
-                echo "ERROR: BioTransformer failed for ${mol}. Check ${log_file} for Java or database errors." >&2
-                return 1
-            fi
-            {
-                echo "WARNING: BioTransformer did not create ${raw_csv}; continuing with an empty result file."
-                printf '%s\n' "SMILES"
-            } > "${final_csv}"
-            return 0
+            echo "ERROR: BioTransformer did not write ${raw_csv}." >&2
+            echo "ERROR: Nested Apptainer likely blocked database access; rebuild and ensure --writable-tmpfs is used." >&2
+            return 1
         fi
 
-        singularity exec "${SINGULARITY_COMMON_ARGS[@]}" "${SINGULARITY_WORKDIR_BIND[@]}" library://abourdais/default/rdkit csvformat \
-        -D ";" "${raw_csv}" \
-        | gawk -v RS='"' 'NR % 2 == 0 { gsub(/\n/, "") } { printf("%s%s", $0, RT) }' \
-        > "${final_csv}"
+        local metabolite_rows
+        metabolite_rows="$(tail -n +2 "${raw_csv}" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')"
+        if [ "${metabolite_rows}" = "0" ]; then
+            echo "WARNING: BioTransformer returned 0 metabolites for ${mol}." | tee -a "${log_file}"
+        else
+            echo "BioTransformer predicted ${metabolite_rows} metabolite row(s) for ${mol}." | tee -a "${log_file}"
+        fi
+
+        singularity exec "${SINGULARITY_COMMON_ARGS[@]}" -B "${tmp}:/tmp" \
+            library://abourdais/default/rdkit csvformat \
+            -D ";" "${raw_csv_in_container}" \
+            | gawk -v RS='"' 'NR % 2 == 0 { gsub(/\n/, "") } { printf("%s%s", $0, RT) }' \
+            > "${final_csv}"
 
         rm -f "${raw_csv}"
     }

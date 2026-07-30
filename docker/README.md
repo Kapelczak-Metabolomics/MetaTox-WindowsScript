@@ -282,15 +282,27 @@ Meta-Predictor is not included in the default Docker image. Leave it **disabled*
 
 ### BioTransformer returns zero metabolites instantly
 
-This usually means BioTransformer could not read or write its files inside Docker, not that the molecule has no metabolites. The pipeline now writes BioTransformer output to `/app/tmp/` using the same host path inside the container.
+BioTransformer needs a **writable overlay** (`--writable-tmpfs`) so it can open its on-image `database` / `supportfiles`. Without that, nested Apptainer often reports:
 
-After rebuilding, verify BioTransformer with ethanol:
+```text
+Unique Biotransformations: 0
+Unique metabolites: 0
+Total time consumption: ~2500
+```
+
+even for molecules that should have many metabolites (e.g. Escitalopram, Nicotine).
+
+The current `Metatox.sh` always runs BioTransformer with `--writable-tmpfs` and a writable `/tmp` bind for JNA.
+
+Verify after rebuild:
 
 ```bash
 docker compose exec metatox /app/docker/verify-nested-singularity.sh
 ```
 
-If ethanol also returns zero metabolites, increase Docker Desktop memory and rebuild. For broader metabolite coverage, try the **superbio** BioTransformer model in the web UI.
+You should see a non-zero metabolite count for nicotine. A real Escitalopram `allHuman` run should take longer than a few seconds and print `BioTransformer predicted N metabolite row(s)`.
+
+Also ensure Docker Desktop has **8 GB+ RAM**.
 
 If BioTransformer, SygMa, or GLORYx fail but MetaTrans succeeds, inspect files in `log/` inside the container:
 ```bash
