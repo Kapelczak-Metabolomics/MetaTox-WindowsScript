@@ -275,6 +275,22 @@ Meta-Predictor is not included in the default Docker image. Leave it **disabled*
 2. Check the **Pipeline log** panel for detailed Apptainer errors after each step.
 3. Ensure Docker Desktop has enough RAM (8 GB+) and disk space for image downloads.
 4. The container must run with `privileged: true` (already set in `docker-compose.yml`).
+5. Run the nested smoke test inside the container:
+   ```bash
+   docker compose exec metatox /app/docker/verify-nested-singularity.sh
+   ```
+
+### BioTransformer returns zero metabolites instantly
+
+This usually means BioTransformer could not read or write its files inside Docker, not that the molecule has no metabolites. The pipeline now writes BioTransformer output to `/app/tmp/` using the same host path inside the container.
+
+After rebuilding, verify BioTransformer with ethanol:
+
+```bash
+docker compose exec metatox /app/docker/verify-nested-singularity.sh
+```
+
+If ethanol also returns zero metabolites, increase Docker Desktop memory and rebuild. For broader metabolite coverage, try the **superbio** BioTransformer model in the web UI.
 
 If BioTransformer, SygMa, or GLORYx fail but MetaTrans succeeds, inspect files in `log/` inside the container:
 ```bash
