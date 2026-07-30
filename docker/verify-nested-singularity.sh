@@ -5,6 +5,7 @@ set -euo pipefail
 APP_ROOT="${APP_ROOT:-/app}"
 TMP_TEST="${APP_ROOT}/tmp/singularity-smoke"
 SMILES="CCO"
+export BIOTRANSFORMER_RUNTIME="${BIOTRANSFORMER_RUNTIME:-/var/lib/metatox/biotransformer-runtime}"
 
 export APPTAINER_NO_MOUNT="${APPTAINER_NO_MOUNT:-cwd,home,tmp,/etc/localtime}"
 export SINGULARITY_NO_MOUNT="${SINGULARITY_NO_MOUNT:-cwd,home,tmp,/etc/localtime}"
@@ -25,18 +26,17 @@ singularity run --no-mount cwd,home,tmp -B "${TMP_TEST}:/tmp" \
 test -s "${TMP_TEST}/smoke_sygma.sdf"
 echo "OK: SygMa produced ${TMP_TEST}/smoke_sygma.sdf"
 
-echo "==> BioTransformer image can predict nicotine metabolites"
+echo "==> BioTransformer writable runtime can predict nicotine metabolites"
 mkdir -p "${TMP_TEST}"
 rm -f "${TMP_TEST}/smoke_biotrans.csv"
 NICOTINE_SMILES='CN1CCC[C@H]1c2cccnc2'
-timeout 900 singularity exec --no-mount cwd,home,tmp --writable-tmpfs -B "${TMP_TEST}:/tmp" \
-  --env "TMPDIR=/tmp" \
-  --env "JNA_TMPDIR=/tmp" \
-  --env "JAVA_TOOL_OPTIONS=-Xmx6g -Djava.io.tmpdir=/tmp -Djna.tmpdir=/tmp" \
-  https://depot.galaxyproject.org/singularity/biotransformer:3.0.20230403--hdfd78af_0 \
-  biotransformer -Xms512m -Xmx6g \
-  -b allHuman -k pred -cm 3 -s 1 -ismi "${NICOTINE_SMILES}" \
-  -ocsv "/tmp/smoke_biotrans.csv" > "${TMP_TEST}/smoke_biotrans.log" 2>&1
+chmod +x "${APP_ROOT}/Scripts/prepare_biotransformer_runtime.sh"
+bash "${APP_ROOT}/Scripts/prepare_biotransformer_runtime.sh" run \
+  --bt-type allHuman \
+  --cmode 3 \
+  --nstep 1 \
+  --smiles "${NICOTINE_SMILES}" \
+  --output "${TMP_TEST}/smoke_biotrans.csv" > "${TMP_TEST}/smoke_biotrans.log" 2>&1
 test -s "${TMP_TEST}/smoke_biotrans.csv"
 if grep -Eq "UnsatisfiedLinkError|JNA temporary directory|/tmp' is not writable|Exception in thread" "${TMP_TEST}/smoke_biotrans.log"; then
   echo "BioTransformer Java/JNA failure:" >&2

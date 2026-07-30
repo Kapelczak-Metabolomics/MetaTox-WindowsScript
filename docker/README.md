@@ -75,7 +75,7 @@ This cache can be several gigabytes after BioTransformer, SygMa, GLORYx, and Met
 | Action | Container removed? | Singularity cache removed? | Your result files removed? |
 |--------|------------------|----------------------------|----------------------------|
 | `docker compose down` | Yes | **No** (volume kept) | **No** (`./data/output` is a bind mount) |
-| `docker compose down -v` | Yes | **Yes** | **No** |
+| `docker compose down -v` | Yes | **Yes** (Singularity cache + BioTransformer runtime) | **No** |
 | Delete container in Docker Desktop | Yes | **No** (unless you also delete the volume) | **No** |
 | `docker compose build --no-cache` | N/A | **No** | **No** |
 
@@ -282,25 +282,31 @@ Meta-Predictor is not included in the default Docker image. Leave it **disabled*
 
 ### BioTransformer returns zero metabolites instantly
 
-BioTransformer needs a **writable overlay** (`--writable-tmpfs`) so it can open its on-image `database` / `supportfiles`. Without that, nested Apptainer often reports:
+Nested Apptainer on Docker Desktop often cannot use BioTransformer's on-image
+`database` / `supportfiles`, so the tool exits in ~2s with `Unique metabolites: 0`.
 
-```text
-Unique Biotransformations: 0
-Unique metabolites: 0
-Total time consumption: ~2500
+MetaTox now extracts the BioTransformer jar + database into a writable Docker
+volume (`metatox-biotransformer-runtime`) and runs `java -jar` from that directory.
+
+After rebuild:
+
+```powershell
+# From your MetaTox repo directory:
+cd C:\Users\ekapelczak\Documents\GitHub\MetaTox-WindowsScript
+docker exec metatox /app/docker/verify-nested-singularity.sh
 ```
 
-even for molecules that should have many metabolites (e.g. Escitalopram, Nicotine).
+Or:
 
-The current `Metatox.sh` always runs BioTransformer with `--writable-tmpfs` and a writable `/tmp` bind for JNA.
-
-Verify after rebuild:
-
-```bash
+```powershell
 docker compose exec metatox /app/docker/verify-nested-singularity.sh
 ```
 
-You should see a non-zero metabolite count for nicotine. A real Escitalopram `allHuman` run should take longer than a few seconds and print `BioTransformer predicted N metabolite row(s)`.
+(`docker compose exec` must be run from the repo folder that contains `docker-compose.yml`.
+`docker exec metatox ...` works from any directory.)
+
+You should see a non-zero nicotine metabolite count. Escitalopram should then take
+longer than a few seconds and log `BioTransformer predicted N metabolite row(s)`.
 
 Also ensure Docker Desktop has **8 GB+ RAM**.
 

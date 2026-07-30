@@ -501,35 +501,28 @@ do
         local mol="${tab_molecule[${indice}]}"
         local smiles="${tab_smiles[${indice}]}"
         local raw_csv="${tmp}${mol}_Biotransformer3_v1.csv"
-        local raw_csv_in_container="/tmp/${mol}_Biotransformer3_v1.csv"
         local final_csv="${tmp}${mol}_Biotransformer3.csv"
         local log_file="${log}${mol}_Biotransformer3_log.txt"
+        local helper="${DirScripts}prepare_biotransformer_runtime.sh"
         local bt_exit=0
 
         rm -f "${raw_csv}" "${final_csv}"
         : > "${log_file}"
 
-        # Critical for nested Docker/Apptainer:
-        # - --writable-tmpfs lets BioTransformer open on-image database/supportfiles
-        #   (HSQLDB/SQLite lock files). Without this it "succeeds" with 0 metabolites.
-        # - Bind MetaTox tmp to /tmp for JNA/InChI native libraries and CSV output.
+        if [ ! -x "${helper}" ]; then
+            chmod +x "${helper}" || true
+        fi
+
+        export BIOTRANSFORMER_RUNTIME="${BIOTRANSFORMER_RUNTIME:-/var/lib/metatox/biotransformer-runtime}"
+        export BIOTRANSFORMER_IMAGE="${BIOTRANSFORMER_IMAGE:-https://depot.galaxyproject.org/singularity/biotransformer:3.0.20230403--hdfd78af_0}"
+
         set +e
-        singularity exec \
-            "${SINGULARITY_COMMON_ARGS[@]}" \
-            --writable-tmpfs \
-            -B "${tmp}:/tmp" \
-            --env "TMPDIR=/tmp" \
-            --env "JNA_TMPDIR=/tmp" \
-            --env "JAVA_TOOL_OPTIONS=-Xmx6g -Djava.io.tmpdir=/tmp -Djna.tmpdir=/tmp" \
-            https://depot.galaxyproject.org/singularity/biotransformer:3.0.20230403--hdfd78af_0 \
-            biotransformer \
-            -Xms512m -Xmx6g \
-            -b "${type}" \
-            -k "pred" \
-            -cm "${cmode}" \
-            -s "${nstep}" \
-            -ismi "${smiles}" \
-            -ocsv "${raw_csv_in_container}" 2>&1 | tee -a "${log_file}"
+        bash "${helper}" run \
+            --bt-type "${type}" \
+            --cmode "${cmode}" \
+            --nstep "${nstep}" \
+            --smiles "${smiles}" \
+            --output "${raw_csv}" 2>&1 | tee -a "${log_file}"
         bt_exit=${PIPESTATUS[0]}
         set -e
 
@@ -545,7 +538,6 @@ do
 
         if [ ! -s "${raw_csv}" ]; then
             echo "ERROR: BioTransformer did not write ${raw_csv}." >&2
-            echo "ERROR: Nested Apptainer likely blocked database access; rebuild and ensure --writable-tmpfs is used." >&2
             return 1
         fi
 
@@ -559,7 +551,7 @@ do
 
         singularity exec "${SINGULARITY_COMMON_ARGS[@]}" -B "${tmp}:/tmp" \
             library://abourdais/default/rdkit csvformat \
-            -D ";" "${raw_csv_in_container}" \
+            -D ";" "/tmp/${mol}_Biotransformer3_v1.csv" \
             | gawk -v RS='"' 'NR % 2 == 0 { gsub(/\n/, "") } { printf("%s%s", $0, RT) }' \
             > "${final_csv}"
 

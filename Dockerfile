@@ -57,12 +57,12 @@ RUN python3 -m pip install -r /tmp/requirements.txt -r /tmp/requirements-compani
 COPY . /app
 
 RUN find /app -type f -name "*.sh" -print -exec dos2unix {} + \
-    && chmod +x /app/Metatox.sh /app/docker/entrypoint.sh /app/docker/bootstrap.sh /app/docker/configure-apptainer.sh /app/docker/up.sh /app/docker/verify-nested-singularity.sh /app/docker/install-apptainer.sh /app/Scripts/gloryx_api.py /app/web_app/job_worker.py \
+    && chmod +x /app/Metatox.sh /app/docker/entrypoint.sh /app/docker/bootstrap.sh /app/docker/configure-apptainer.sh /app/docker/up.sh /app/docker/verify-nested-singularity.sh /app/docker/install-apptainer.sh /app/Scripts/gloryx_api.py /app/Scripts/prepare_biotransformer_runtime.sh /app/web_app/job_worker.py \
     && mkdir -p /app/data/input /app/data/output /app/data/job /app/log /var/lib/metatox/singularity-cache /tmp/apptainer
 
 EXPOSE 8501
 
-VOLUME ["/app/data/input", "/app/data/output", "/var/lib/metatox/singularity-cache"]
+VOLUME ["/app/data/input", "/app/data/output", "/var/lib/metatox/singularity-cache", "/var/lib/metatox/biotransformer-runtime"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD curl -fsS "http://127.0.0.1:${METATOX_PORT}/api/health" || exit 1
