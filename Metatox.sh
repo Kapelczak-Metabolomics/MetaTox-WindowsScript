@@ -527,11 +527,6 @@ do
             return "${bt_exit}"
         fi
 
-        if grep -Eq "JNA temporary directory '/tmp' is not writable|UnsatisfiedLinkError|Exception in thread" "${log_file}"; then
-            echo "ERROR: BioTransformer Java/JNA runtime failed for ${mol}. Check ${log_file}." >&2
-            return 1
-        fi
-
         if [ ! -s "${raw_csv}" ]; then
             echo "ERROR: BioTransformer did not write ${raw_csv}." >&2
             return 1
@@ -539,6 +534,15 @@ do
 
         local metabolite_rows
         metabolite_rows="$(tail -n +2 "${raw_csv}" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')"
+
+        # Fatal Java/JNA failures only matter when no metabolites were produced.
+        # Upstream BioTransformer often logs a non-fatal HGut NullPointerException
+        # while still saving CYP/PhaseII metabolites successfully.
+        if [ "${metabolite_rows}" = "0" ] && grep -Eq "JNA temporary directory '/tmp' is not writable|UnsatisfiedLinkError|Exception in thread \"main\"" "${log_file}"; then
+            echo "ERROR: BioTransformer Java/JNA runtime failed for ${mol}. Check ${log_file}." >&2
+            return 1
+        fi
+
         if [ "${metabolite_rows}" = "0" ]; then
             echo "WARNING: BioTransformer returned 0 metabolites for ${mol}." | tee -a "${log_file}"
             # Keep an empty formatted CSV so compilation can continue with other tools.
@@ -594,24 +598,56 @@ do
 
     gloryx_job () {
         set -e
+        set -o pipefail
         local mol="${tab_molecule[${indice}]}"
         local output_csv="${tmp}${mol}_Gloryx.csv"
+        local log_file="${log}${mol}_Gloryx_log.txt"
         local gloryx_script="${DirScripts}gloryx_api.py"
+        local gloryx_exit=0
+        local metabolite_rows=0
+
+        rm -f "${output_csv}"
+        : > "${log_file}"
 
         if [ -f "${gloryx_script}" ]; then
+            set +e
             python3 "${gloryx_script}" \
                 --phase "${phase_gloryx}" \
                 --smile "${tab_smiles[${indice}]}" \
-                --output "${output_csv}" \
-                > "${log}${mol}_Gloryx_log.txt" 2>&1
-            return 0
+                --output "${output_csv}" 2>&1 | tee -a "${log_file}"
+            gloryx_exit=${PIPESTATUS[0]}
+            set -e
+        else
+            set +e
+            singularity run "${SINGULARITY_COMMON_ARGS[@]}" -B "${tmp}:/tmp" library://abourdais/default/gloryx_api \
+                --phase "${phase_gloryx}" \
+                --smile "${tab_smiles[${indice}]}" \
+                --output "/tmp/${mol}_Gloryx.csv" 2>&1 | tee -a "${log_file}"
+            gloryx_exit=${PIPESTATUS[0]}
+            set -e
         fi
 
-        singularity run "${SINGULARITY_COMMON_ARGS[@]}" -B "${tmp}:/tmp" library://abourdais/default/gloryx_api \
-        --phase $phase_gloryx \
-        --smile "${tab_smiles[${indice}]}" \
-        --output "/tmp/${mol}_Gloryx.csv" \
-        > "${log}${mol}_Gloryx_log.txt" 2>&1
+        if [ "${gloryx_exit}" -ne 0 ]; then
+            echo "ERROR: GLORYx exited with code ${gloryx_exit} for ${mol}." | tee -a "${log_file}" >&2
+            # Keep an empty CSV so compilation can continue with other tools.
+            if [ ! -s "${output_csv}" ]; then
+                printf '%s\n' "metabolite_smiles,score,pathway" > "${output_csv}"
+            fi
+            return "${gloryx_exit}"
+        fi
+
+        if [ ! -s "${output_csv}" ]; then
+            echo "ERROR: GLORYx did not write ${output_csv}." | tee -a "${log_file}" >&2
+            printf '%s\n' "metabolite_smiles,score,pathway" > "${output_csv}"
+            return 1
+        fi
+
+        metabolite_rows="$(tail -n +2 "${output_csv}" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')"
+        if [ "${metabolite_rows}" = "0" ]; then
+            echo "WARNING: GLORYx returned 0 metabolites for ${mol}." | tee -a "${log_file}"
+            return 0
+        fi
+        echo "GLORYx predicted ${metabolite_rows} metabolite row(s) for ${mol}." | tee -a "${log_file}"
     }
 
     if ! run_with_spinner "GloryX ..." gloryx_job; then

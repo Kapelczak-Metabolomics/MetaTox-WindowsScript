@@ -33,6 +33,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxext6 \
     libxrender1 \
     openbabel \
+    openjdk-21-jre-headless \
     python3 \
     python3-pip \
     python3-venv \

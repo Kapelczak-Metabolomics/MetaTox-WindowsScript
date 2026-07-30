@@ -309,10 +309,38 @@ docker compose exec metatox /app/docker/verify-nested-singularity.sh
 (`docker compose exec` must be run from the repo folder that contains `docker-compose.yml`.
 `docker exec metatox ...` works from any directory.)
 
-You should see a non-zero nicotine metabolite count. Escitalopram should then take
-longer than a few seconds and log `BioTransformer predicted N metabolite row(s)`.
+You should see non-zero thymol and Escitalopram BioTransformer counts. Escitalopram
+SMILES that keep stereochemistry (`@` / `@@`) previously returned **0 metabolites in
+~2–5 seconds** — that is an upstream BioTransformer quirk. MetaTox now retries
+automatically without stereo markers and prefers native Java over nested Apptainer.
 
 Also ensure Docker Desktop has **8 GB+ RAM**.
+
+### BioTransformer returns 0 metabolites in a few seconds
+
+1. Pull the latest image (`docker compose build --no-cache` then `up`).
+2. Clear an incomplete runtime volume **contents** (not the mount point):
+   ```powershell
+   docker exec metatox bash -lc "rm -rf /var/lib/metatox/biotransformer-runtime/* /var/lib/metatox/biotransformer-runtime/.[!.]*"
+   ```
+3. Re-run verification:
+   ```powershell
+   docker exec metatox /app/docker/verify-nested-singularity.sh
+   ```
+4. For Escitalopram, the log should mention `retrying without stereo` and then
+   `BioTransformer predicted N metabolite row(s)` with N > 0.
+
+### GLORYx looks blank / empty
+
+GLORYx uses the public NERDD API (`https://nerdd.univie.ac.at`). When that queue is
+busy you will see progress lines such as `status=created ... wait≈NNmin` in the
+pipeline log (and in `/app/log/*_Gloryx_log.txt`). MetaTox maps NERDD fields
+`metabolite_smiles`, `priority_score`, and `reaction_type`. If NERDD is down or
+rate-limits the client, GLORYx fails loudly while other tools still compile results.
+
+```powershell
+docker exec metatox tail -n 80 /app/log/Escitalopram_Gloryx_log.txt
+```
 
 If BioTransformer, SygMa, or GLORYx fail but MetaTrans succeeds, inspect files in `log/` inside the container:
 ```bash
@@ -338,7 +366,7 @@ Browser -> Flask web UI (Tailwind CSS + Flowbite)
                 v
          Metatox.sh pipeline
                 |
-                v
-   Apptainer/Singularity images
-   (BioTransformer3, SygMa, GLORYx, MetaTrans, RDKit)
+                +--> BioTransformer3 (native Java jar; Apptainer fallback)
+                +--> SygMa / MetaTrans / RDKit (Apptainer)
+                +--> GLORYx (public NERDD REST API)
 ```
