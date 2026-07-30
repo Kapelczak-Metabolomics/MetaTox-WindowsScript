@@ -41,6 +41,14 @@ From the repository root:
 docker compose up --build
 ```
 
+On Windows PowerShell, you can also use the helper script (recommended):
+
+```powershell
+.\docker\up.ps1
+```
+
+This uses `docker compose` with `privileged: true` and the Apptainer security options required for BioTransformer, SygMa, GLORYx, and MetaTrans. **Do not** start the service with a plain `docker run` unless you include every flag shown in the troubleshooting section below.
+
 Open your browser:
 
 ```text
@@ -175,7 +183,37 @@ docker run --rm -it \
 
 This is **not** caused by changing the host port (`8501`, `8080`, etc.). Port mapping only affects how you reach the web UI.
 
-It means Apptainer cannot run nested Singularity images inside the MetaTox Docker container. Fix it by:
+It means Apptainer cannot run nested Singularity images inside the MetaTox Docker container. The image now forces Apptainer **setuid mode** (`allow user ns = no`) because user namespaces are blocked inside Docker, especially on Docker Desktop.
+
+**Use this exact startup sequence on Windows:**
+
+```powershell
+cd C:\path\to\MetaTox-WindowsScript
+git pull
+docker compose down
+docker compose build --no-cache
+docker compose up
+```
+
+Or:
+
+```powershell
+.\docker\up.ps1 -NoCache
+```
+
+(`docker\up.ps1` rebuilds and starts with the correct compose settings.)
+
+After startup, check the logs for:
+
+```text
+Apptainer setuid starter enabled
+allow user ns = no
+Apptainer runtime check: OK
+```
+
+If the runtime check fails, the web UI will not start and the container logs will show the exact Apptainer error.
+
+Fix checklist:
 
 1. **Use Docker Compose** (recommended):
    ```bash

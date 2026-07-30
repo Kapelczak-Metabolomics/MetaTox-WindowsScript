@@ -100,13 +100,14 @@ def verify_singularity_runtime(singularity: Optional[str] = None) -> tuple[bool,
         return (
             False,
             "User namespaces are blocked and apptainer-suid is not installed. "
-            "Rebuild the image and run with docker compose so privileged mode is enabled.",
+            "Rebuild the image and start with: docker compose up --build",
         )
 
     return (
         False,
         "User namespaces are blocked and the Apptainer setuid starter is not active. "
-        "Rebuild with docker compose up --build and ensure privileged mode is enabled.",
+        "Rebuild with docker compose build --no-cache and start with docker compose up "
+        "(privileged mode is required).",
     )
 
 

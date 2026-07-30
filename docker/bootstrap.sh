@@ -27,7 +27,13 @@ if command -v apptainer >/dev/null 2>&1 && ! command -v singularity >/dev/null 2
 fi
 
 if [[ -x "${APP_ROOT}/docker/configure-apptainer.sh" ]]; then
-  "${APP_ROOT}/docker/configure-apptainer.sh" || true
+  if ! "${APP_ROOT}/docker/configure-apptainer.sh"; then
+    if [[ "${METATOX_REQUIRE_APPTAINER:-true}" == "true" ]]; then
+      echo "ERROR: Apptainer is required but is not functional in this container." >&2
+      exit 1
+    fi
+    echo "WARNING: Apptainer runtime check failed; predictions will not work until Docker is started correctly." >&2
+  fi
 fi
 
 if command -v singularity >/dev/null 2>&1; then

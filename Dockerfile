@@ -47,7 +47,7 @@ ARG TARGETARCH
 ARG APPTAINER_VERSION=1.3.6
 COPY docker/install-apptainer.sh docker/configure-apptainer.sh /tmp/docker/
 RUN chmod +x /tmp/docker/install-apptainer.sh /tmp/docker/configure-apptainer.sh \
-    && TARGETARCH="${TARGETARCH}" APPTAINER_VERSION="${APPTAINER_VERSION}" /tmp/docker/install-apptainer.sh \
+    && METATOX_VERIFY_APPTAINER=false TARGETARCH="${TARGETARCH}" APPTAINER_VERSION="${APPTAINER_VERSION}" /tmp/docker/install-apptainer.sh \
     && rm -rf /tmp/docker
 
 COPY web_app/requirements.txt /tmp/requirements.txt
@@ -57,7 +57,7 @@ RUN python3 -m pip install -r /tmp/requirements.txt -r /tmp/requirements-compani
 COPY . /app
 
 RUN find /app -type f -name "*.sh" -print -exec dos2unix {} + \
-    && chmod +x /app/Metatox.sh /app/docker/entrypoint.sh /app/docker/bootstrap.sh /app/docker/configure-apptainer.sh /app/docker/verify-nested-singularity.sh /app/docker/install-apptainer.sh /app/web_app/job_worker.py \
+    && chmod +x /app/Metatox.sh /app/docker/entrypoint.sh /app/docker/bootstrap.sh /app/docker/configure-apptainer.sh /app/docker/up.sh /app/docker/verify-nested-singularity.sh /app/docker/install-apptainer.sh /app/web_app/job_worker.py \
     && mkdir -p /app/data/input /app/data/output /app/data/job /app/log /var/lib/metatox/singularity-cache /tmp/apptainer
 
 EXPOSE 8501

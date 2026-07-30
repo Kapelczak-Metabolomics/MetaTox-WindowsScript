@@ -22,6 +22,13 @@ def test_compose_enables_nested_apptainer_security_options():
     assert "seccomp:unconfined" in compose
     assert "apparmor:unconfined" in compose
     assert "/dev/fuse" in compose
+    assert "METATOX_VERIFY_APPTAINER" in compose
+
+
+def test_configure_apptainer_forces_setuid_mode():
+    script = (REPO_ROOT / "docker" / "configure-apptainer.sh").read_text(encoding="utf-8")
+    assert 'set_apptainer_conf "allow setuid" "yes"' in script
+    assert 'set_apptainer_conf "allow user ns" "no"' in script
 
 
 def test_dockerfile_uses_install_script():
