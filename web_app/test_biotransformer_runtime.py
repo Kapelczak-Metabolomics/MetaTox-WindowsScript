@@ -1,9 +1,13 @@
 """Tests for BioTransformer runtime helper."""
 
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
-import prepare_biotransformer_runtime as helper
+SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "Scripts"
+sys.path.insert(0, str(SCRIPTS_DIR))
+
+import prepare_biotransformer_runtime as helper  # noqa: E402
 
 
 def test_runtime_complete_requires_supportfiles_and_config(tmp_path: Path):
