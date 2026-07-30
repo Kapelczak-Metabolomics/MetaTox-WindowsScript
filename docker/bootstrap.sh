@@ -26,6 +26,10 @@ if command -v apptainer >/dev/null 2>&1 && ! command -v singularity >/dev/null 2
   ln -sf "$(command -v apptainer)" /usr/local/bin/singularity
 fi
 
+if [[ -x "${APP_ROOT}/docker/configure-apptainer.sh" ]]; then
+  "${APP_ROOT}/docker/configure-apptainer.sh" || true
+fi
+
 if command -v singularity >/dev/null 2>&1; then
   echo "Apptainer version: $(singularity --version)"
   singularity remote add --no-login SylabsCloud cloud.sycloud.io >/dev/null 2>&1 || true

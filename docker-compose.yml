@@ -24,6 +24,13 @@ services:
     restart: unless-stopped
     privileged: true
     shm_size: "4gb"
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - seccomp:unconfined
+      - apparmor:unconfined
+    devices:
+      - /dev/fuse
 
 volumes:
   metatox-singularity-cache:

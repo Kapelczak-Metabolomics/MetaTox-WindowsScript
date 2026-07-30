@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import stat
 import subprocess
 import zipfile
 from dataclasses import dataclass
@@ -51,6 +52,64 @@ def metapredictor_is_available(work_dir: Optional[Path] = None) -> bool:
     return predictor_script.is_file() and bool(shutil.which("conda"))
 
 
+def _find_starter_suid() -> Optional[Path]:
+    candidates = [
+        Path("/usr/libexec/apptainer/bin/starter-suid"),
+        Path("/usr/bin/starter-suid"),
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+
+    for root in (Path("/usr"), Path("/opt")):
+        if not root.is_dir():
+            continue
+        try:
+            matches = list(root.rglob("starter-suid"))
+        except OSError:
+            continue
+        if matches:
+            return matches[0]
+    return None
+
+
+def verify_singularity_runtime(singularity: Optional[str] = None) -> tuple[bool, str]:
+    runtime = singularity or shutil.which("singularity") or shutil.which("apptainer")
+    if not runtime:
+        return False, "Singularity/Apptainer binary not found."
+    if singularity and not Path(runtime).is_file() and shutil.which(runtime) is None:
+        return False, "Singularity/Apptainer binary not found."
+
+    starter = _find_starter_suid()
+    if starter is not None and starter.stat().st_mode & stat.S_ISUID:
+        return True, ""
+
+    try:
+        result = subprocess.run(
+            ["unshare", "--user", "true"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return True, ""
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        pass
+
+    if starter is None:
+        return (
+            False,
+            "User namespaces are blocked and apptainer-suid is not installed. "
+            "Rebuild the image and run with docker compose so privileged mode is enabled.",
+        )
+
+    return (
+        False,
+        "User namespaces are blocked and the Apptainer setuid starter is not active. "
+        "Rebuild with docker compose up --build and ensure privileged mode is enabled.",
+    )
+
+
 def check_environment() -> EnvironmentStatus:
     work_dir = get_work_dir()
     issues: List[str] = []
@@ -61,6 +120,17 @@ def check_environment() -> EnvironmentStatus:
         issues.append("Singularity/Apptainer is not available inside the container.")
     else:
         notes.append(f"Container runtime: {singularity}")
+        runtime_ok, runtime_error = verify_singularity_runtime(singularity)
+        if runtime_ok:
+            notes.append("Apptainer runtime check passed.")
+        else:
+            issues.append(
+                "Apptainer cannot execute nested containers. "
+                "Start MetaTox with docker compose (privileged mode) or pass "
+                "--privileged --security-opt seccomp=unconfined "
+                "--security-opt apparmor=unconfined --device /dev/fuse to docker run. "
+                f"Details: {runtime_error}"
+            )
 
     script = work_dir / "Metatox.sh"
     if not script.is_file():

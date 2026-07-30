@@ -6,7 +6,7 @@ import pytest
 
 import zipfile
 
-from pipeline import PipelineOptions, build_command, sanitize_filename, zip_output_directory
+from pipeline import PipelineOptions, build_command, sanitize_filename, verify_singularity_runtime, zip_output_directory
 
 
 def test_sanitize_filename():
@@ -58,3 +58,9 @@ def test_zip_output_directory_requires_compiled_results(tmp_path: Path):
     output_dir.mkdir()
     with pytest.raises(RuntimeError, match="No compiled result files"):
         zip_output_directory(output_dir)
+
+
+def test_verify_singularity_runtime_reports_missing_binary():
+    ok, message = verify_singularity_runtime("/definitely/missing/singularity")
+    assert ok is False
+    assert "not found" in message.lower()

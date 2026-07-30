@@ -114,6 +114,10 @@ If your repository publishes images to GitHub Container Registry:
 docker pull ghcr.io/kapelczak-metabolomics/metatox:latest
 docker run --rm -it \
   --privileged \
+  --shm-size=4g \
+  --security-opt seccomp=unconfined \
+  --security-opt apparmor=unconfined \
+  --device /dev/fuse \
   -p 8501:8501 \
   -v "$(pwd)/data/output:/app/data/output" \
   -v "$(pwd)/data/input:/app/data/input" \
@@ -130,7 +134,43 @@ docker run --rm -it \
 ### Permission errors with Apptainer
 
 - Docker Compose runs the service with `privileged: true` so Apptainer can execute nested containers
+- The image also installs `apptainer-suid` so Apptainer can fall back to setuid mode when user namespaces are blocked
+- Compose also enables `seccomp:unconfined`, `apparmor:unconfined`, and `/dev/fuse` for nested Apptainer on Ubuntu 24.04 hosts
 - On hardened hosts, ask your admin to allow privileged containers
+
+### `Failed to create user namespace: not allowed to create user namespace`
+
+This is **not** caused by changing the host port (`8501`, `8080`, etc.). Port mapping only affects how you reach the web UI.
+
+It means Apptainer cannot run nested Singularity images inside the MetaTox Docker container. Fix it by:
+
+1. **Use Docker Compose** (recommended):
+   ```bash
+   docker compose down
+   docker compose build --no-cache
+   docker compose up
+   ```
+2. **Do not remove `privileged: true`** from `docker-compose.yml`.
+3. If you use `docker run` manually, include all of these flags:
+   ```bash
+   docker run --rm -it \
+     --privileged \
+     --shm-size=4g \
+     --security-opt seccomp=unconfined \
+     --security-opt apparmor=unconfined \
+     --device /dev/fuse \
+     -p 8501:8501 \
+     -v "$(pwd)/data/output:/app/data/output" \
+     -v "$(pwd)/data/input:/app/data/input" \
+     metatox:latest
+   ```
+4. After rebuilding, check startup logs for `Apptainer setuid starter enabled` and `setuid starter: ready`.
+5. Optional full smoke test inside the running container:
+   ```bash
+   docker compose exec metatox /app/docker/verify-nested-singularity.sh
+   ```
+
+If you deploy to Kubernetes, Nomad, or a cloud platform that blocks privileged containers, nested Apptainer will not work in this image. Run MetaTox on bare Linux/WSL2 with Apptainer installed on the host instead.
 
 ### `bash\r: No such file or directory`
 

@@ -12,6 +12,16 @@ def test_install_apptainer_script_supports_arm64_and_amd64():
     assert "arm64)" in script
     assert "ppa:apptainer/ppa" in script
     assert "apptainer_${APPTAINER_VERSION}_amd64.deb" in script
+    assert "apptainer-suid_${APPTAINER_VERSION}_amd64.deb" in script
+    assert "apptainer-suid" in script
+
+
+def test_compose_enables_nested_apptainer_security_options():
+    compose = (REPO_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    assert "privileged: true" in compose
+    assert "seccomp:unconfined" in compose
+    assert "apparmor:unconfined" in compose
+    assert "/dev/fuse" in compose
 
 
 def test_dockerfile_uses_install_script():
