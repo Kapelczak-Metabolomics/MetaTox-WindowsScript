@@ -121,7 +121,7 @@ cp -a "${src}/." /bt-export/
 
 
 def download_official_package(runtime: Path) -> None:
-    print(f"Downloading complete BioTransformer package from {OFFICIAL_ZIP_URL} ...")
+    print(f"Downloading complete BioTransformer package from {OFFICIAL_ZIP_URL} ...", flush=True)
     runtime.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="biotransformer-zip-") as tmp:
         tmp_path = Path(tmp)
@@ -152,7 +152,7 @@ def download_official_package(runtime: Path) -> None:
 def prepare_runtime(runtime: Path) -> Path:
     marker = runtime / READY_MARKER
     if marker.is_file() and runtime_complete(runtime):
-        print(f"BioTransformer runtime ready: {runtime}")
+        print(f"BioTransformer runtime ready: {runtime}", file=sys.stderr, flush=True)
         return runtime
 
     if runtime.exists():
@@ -197,8 +197,13 @@ def prepare_runtime(runtime: Path) -> Path:
             pass
 
     marker.write_text("ok\n", encoding="utf-8")
-    print(f"BioTransformer runtime prepared: {runtime}")
-    print("Contents:", ", ".join(sorted(p.name for p in runtime.iterdir())))
+    print(f"BioTransformer runtime prepared: {runtime}", file=sys.stderr, flush=True)
+    print(
+        "Contents:",
+        ", ".join(sorted(p.name for p in runtime.iterdir())),
+        file=sys.stderr,
+        flush=True,
+    )
     return runtime
 
 

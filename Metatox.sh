@@ -609,9 +609,13 @@ do
         rm -f "${output_csv}"
         : > "${log_file}"
 
+        # Default: offline local GLORYx (reaction rules + RDKit). NERDD API is optional.
+        export METATOX_GLORYX_BACKEND="${METATOX_GLORYX_BACKEND:-local}"
+
         if [ -f "${gloryx_script}" ]; then
             set +e
             python3 "${gloryx_script}" \
+                --backend "${METATOX_GLORYX_BACKEND}" \
                 --phase "${phase_gloryx}" \
                 --smile "${tab_smiles[${indice}]}" \
                 --output "${output_csv}" 2>&1 | tee -a "${log_file}"

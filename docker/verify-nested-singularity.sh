@@ -87,27 +87,20 @@ if ! grep -Eq "retrying without stereo|after stereo strip|predicted [1-9]" "${TM
 fi
 echo "OK: BioTransformer stereo path produced ${STEREO_ROWS} metabolite row(s)"
 
-echo "==> GLORYx helper can query the public API"
-set +e
+echo "==> GLORYx offline local backend predicts metabolites"
 python3 "${APP_ROOT}/Scripts/gloryx_api.py" \
+  --backend local \
   --phase phase_1_and_2 \
   --smile "${SMILES}" \
   --output "${TMP_TEST}/smoke_gloryx.csv" > "${TMP_TEST}/smoke_gloryx.log" 2>&1
-GLORYX_RC=$?
-set -e
-if [ ! -s "${TMP_TEST}/smoke_gloryx.csv" ]; then
-  echo "GLORYx did not write an output CSV:" >&2
+test -s "${TMP_TEST}/smoke_gloryx.csv"
+GLORYX_ROWS="$(tail -n +2 "${TMP_TEST}/smoke_gloryx.csv" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')"
+if [ "${GLORYX_ROWS}" -le 0 ]; then
+  echo "Offline GLORYx predicted zero metabolites:" >&2
   tail -n 80 "${TMP_TEST}/smoke_gloryx.log" >&2
   exit 1
 fi
-GLORYX_ROWS="$(tail -n +2 "${TMP_TEST}/smoke_gloryx.csv" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')"
-if [ "${GLORYX_RC}" -ne 0 ] || [ "${GLORYX_ROWS}" -le 0 ]; then
-  echo "WARNING: GLORYx API did not return metabolites (rc=${GLORYX_RC}, rows=${GLORYX_ROWS})." >&2
-  echo "This usually means the public NERDD queue is busy/down; BioTransformer/SygMa/MetaTrans are unaffected." >&2
-  tail -n 40 "${TMP_TEST}/smoke_gloryx.log" >&2 || true
-else
-  echo "OK: GLORYx produced ${GLORYX_ROWS} metabolite row(s) in ${TMP_TEST}/smoke_gloryx.csv"
-fi
+echo "OK: GLORYx local produced ${GLORYX_ROWS} metabolite row(s) in ${TMP_TEST}/smoke_gloryx.csv"
 
 echo "==> MetaTrans image can execute"
 singularity run --no-mount cwd,home,tmp --containall -B "${TMP_TEST}:/tmp" --writable-tmpfs \

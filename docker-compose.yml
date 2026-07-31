@@ -21,6 +21,7 @@ services:
       METATOX_REQUIRE_APPTAINER: "${METATOX_REQUIRE_APPTAINER:-true}"
       BIOTRANSFORMER_RUNTIME: "/var/lib/metatox/biotransformer-runtime"
       BIOTRANSFORMER_PREFER_NATIVE_JAVA: "${BIOTRANSFORMER_PREFER_NATIVE_JAVA:-1}"
+      METATOX_GLORYX_BACKEND: "${METATOX_GLORYX_BACKEND:-local}"
     volumes:
       - ./data/input:/app/data/input
       - ./data/output:/app/data/output

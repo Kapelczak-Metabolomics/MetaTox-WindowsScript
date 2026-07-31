@@ -330,13 +330,22 @@ Also ensure Docker Desktop has **8 GB+ RAM**.
 4. For Escitalopram, the log should mention `retrying without stereo` and then
    `BioTransformer predicted N metabolite row(s)` with N > 0.
 
-### GLORYx looks blank / empty
+### GLORYx
 
-GLORYx uses the public NERDD API (`https://nerdd.univie.ac.at`). When that queue is
-busy you will see progress lines such as `status=created ... wait≈NNmin` in the
-pipeline log (and in `/app/log/*_Gloryx_log.txt`). MetaTox maps NERDD fields
-`metabolite_smiles`, `priority_score`, and `reaction_type`. If NERDD is down or
-rate-limits the client, GLORYx fails loudly while other tools still compile results.
+**Default backend is offline/local** (`METATOX_GLORYX_BACKEND=local`). MetaTox applies
+the published GLORYx reaction-rule SMIRKS with RDKit inside the container — no NERDD
+queue, no HTTP 429s.
+
+You should see:
+```text
+GLORYx backend: local (offline reaction rules)
+GLORYx local predicted N metabolite(s) ...
+GLORYx predicted N metabolite row(s) for Escitalopram.
+```
+
+Optional: set `METATOX_GLORYX_BACKEND=api` to use the public NERDD service instead
+(not recommended; that API rate-limits with
+“initializing a job you submitted recently”).
 
 ```powershell
 docker exec metatox tail -n 80 /app/log/Escitalopram_Gloryx_log.txt
@@ -368,5 +377,5 @@ Browser -> Flask web UI (Tailwind CSS + Flowbite)
                 |
                 +--> BioTransformer3 (native Java jar; Apptainer fallback)
                 +--> SygMa / MetaTrans / RDKit (Apptainer)
-                +--> GLORYx (public NERDD REST API)
+                +--> GLORYx (offline reaction rules + RDKit; optional NERDD API)
 ```
