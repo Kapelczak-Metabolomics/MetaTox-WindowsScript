@@ -1,0 +1,7 @@
+# Keep shell scripts Unix-compatible inside Linux containers.
+*.sh text eol=lf
+docker/bootstrap.sh text eol=lf
+docker/entrypoint.sh text eol=lf
+Metatox.sh text eol=lf
+Dockerfile text eol=lf
+docker-compose.yml text eol=lf

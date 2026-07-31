@@ -10,13 +10,35 @@
 - **MetaTrans**
 - **Meta-Predictor**
 
-**BioTransformer3**, **Sygma**, **MetaTrans** and **GloryX (API)** are used via **singularity**. \
+**BioTransformer3**, **Sygma** and **MetaTrans** are used via **singularity** (BioTransformer prefers native Java in Docker). \
+**GLORYx** runs offline by default (published reaction rules + RDKit); the NERDD API is optional. \
 **Meta-Predictor** needs to clone its github and to create a **conda** environment. \
 Singularity image downloads and conda environment creations are automated (First use may take a long time).
 
 As this project was designed for non-bioinformaticians, a **graphical interface via zenity** was included (**optional**).
 
 This project has been tested and run on **linux** and **windows-WSL2**.
+
+### Docker deployment (recommended)
+
+Run MetaTox with a browser-based GUI and bundled dependencies:
+
+```bash
+docker compose up --build
+```
+
+Open `http://localhost:8501`, upload your input file, and download results from the web UI (Tailwind CSS + Flowbite interface).
+
+- Setup guide: [`docker/README.md`](docker/README.md)
+- **macOS (Apple Silicon):** use `docker compose -f docker-compose.yml -f docker-compose.mac.yml up --build` for the most compatible build
+- Outputs are saved to `data/output/`
+
+### Windows desktop app (alternative)
+
+A native Windows GUI is available in [`windows_app/`](windows_app/). It packages as `MetaToxGUI.exe` and runs the same pipeline through WSL2.
+
+- Build guide: [`windows_app/README_WINDOWS.md`](windows_app/README_WINDOWS.md)
+- Quick build on Windows: `windows_app\build.bat`
 
 Due to hardware limitations, **Meta-Predictor** (which requires **cuda drivers**) may not function correctly. Its use is therefore disabled by default.
 You can try running it and seeing the error logs to solve potential problems.

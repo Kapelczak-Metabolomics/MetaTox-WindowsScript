@@ -1,0 +1,15 @@
+GLORYx reaction rules
+=====================
+
+File: gloryx_reactionrules_connect.csv
+
+Source:
+  https://github.com/molinfo-vienna/GLORYxR
+  (derived from the GLORYx reaction-rule sets published with
+   de Bruyn Kops et al., Chem. Res. Toxicol. 2020,
+   DOI: 10.1021/acs.chemrestox.0c00224)
+
+License: GNU General Public License, Version 3.0
+
+These rules are used by MetaTox's offline GLORYx backend so predictions do not
+depend on the public NERDD web API.

@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+# Smoke-test nested Apptainer configuration inside the MetaTox container.
+set -euo pipefail
+
+APP_ROOT="${APP_ROOT:-/app}"
+TMP_TEST="${APP_ROOT}/tmp/singularity-smoke"
+SMILES="CCO"
+export BIOTRANSFORMER_RUNTIME="${BIOTRANSFORMER_RUNTIME:-/var/lib/metatox/biotransformer-runtime}"
+
+export APPTAINER_NO_MOUNT="${APPTAINER_NO_MOUNT:-cwd,home,tmp,/etc/localtime}"
+export SINGULARITY_NO_MOUNT="${SINGULARITY_NO_MOUNT:-cwd,home,tmp,/etc/localtime}"
+unset APPTAINER_BINDPATH SINGULARITY_BINDPATH
+
+mkdir -p "${TMP_TEST}"
+
+echo "==> Apptainer version"
+singularity --version
+
+echo "==> SygMa image can execute"
+mkdir -p "${TMP_TEST}/sygma-runtime/home" "${TMP_TEST}/sygma-runtime/eggs"
+singularity run --no-mount cwd,home,tmp -B "${TMP_TEST}:/tmp" \
+  --env "HOME=/tmp/sygma-runtime/home" \
+  --env "PYTHON_EGG_CACHE=/tmp/sygma-runtime/eggs" \
+  --env "TMPDIR=/tmp" \
+  docker://3dechem/sygma "${SMILES}" -1 1 -2 1 > "${TMP_TEST}/smoke_sygma.sdf" 2>"${TMP_TEST}/smoke_sygma.log"
+test -s "${TMP_TEST}/smoke_sygma.sdf"
+echo "OK: SygMa produced ${TMP_TEST}/smoke_sygma.sdf"
+
+echo "==> BioTransformer complete runtime can predict thymol metabolites"
+mkdir -p "${TMP_TEST}"
+rm -f "${TMP_TEST}/smoke_biotrans.csv"
+# Official BioTransformer example molecule (should produce metabolites).
+THYMOL_SMILES='CC(C)C1=CC=C(C)C=C1O'
+# Force rebuild of incomplete/outdated runtimes.
+rm -f "${BIOTRANSFORMER_RUNTIME}/.ready" \
+  "${BIOTRANSFORMER_RUNTIME}/.ready-complete-v1" \
+  "${BIOTRANSFORMER_RUNTIME}/.ready-complete-v2"
+python3 "${APP_ROOT}/Scripts/prepare_biotransformer_runtime.py" run \
+  --bt-type allHuman \
+  --cmode 3 \
+  --nstep 2 \
+  --smiles "${THYMOL_SMILES}" \
+  --output "${TMP_TEST}/smoke_biotrans.csv" > "${TMP_TEST}/smoke_biotrans.log" 2>&1
+test -s "${TMP_TEST}/smoke_biotrans.csv"
+if ! ls "${BIOTRANSFORMER_RUNTIME}/supportfiles" >/dev/null 2>&1; then
+  echo "BioTransformer runtime is missing supportfiles:" >&2
+  ls -la "${BIOTRANSFORMER_RUNTIME}" >&2 || true
+  exit 1
+fi
+if [ ! -f "${BIOTRANSFORMER_RUNTIME}/config.json" ]; then
+  echo "BioTransformer runtime is missing config.json" >&2
+  exit 1
+fi
+if grep -Eq "UnsatisfiedLinkError|JNA temporary directory|/tmp' is not writable|Exception in thread \"main\"" "${TMP_TEST}/smoke_biotrans.log"; then
+  # HGut NPE is a known upstream bug that still yields metabolites; only fail hard on fatal Java errors.
+  if ! grep -Eq "Unique metabolites: [1-9]|BioTransformer predicted [1-9]" "${TMP_TEST}/smoke_biotrans.log"; then
+    echo "BioTransformer Java/JNA failure:" >&2
+    tail -n 80 "${TMP_TEST}/smoke_biotrans.log" >&2
+    exit 1
+  fi
+fi
+ROW_COUNT="$(tail -n +2 "${TMP_TEST}/smoke_biotrans.csv" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')"
+if [ "${ROW_COUNT}" -le 0 ]; then
+  echo "BioTransformer predicted zero metabolites for thymol:" >&2
+  tail -n 80 "${TMP_TEST}/smoke_biotrans.log" >&2
+  exit 1
+fi
+echo "OK: BioTransformer produced ${ROW_COUNT} metabolite row(s) in ${TMP_TEST}/smoke_biotrans.csv"
+
+echo "==> BioTransformer stereo-SMILES retry works (Escitalopram-like)"
+ESCITALOPRAM_SMILES='Fc1ccc(cc1)[C@@]3(OCc2cc(C#N)ccc23)CCCN(C)C'
+rm -f "${TMP_TEST}/smoke_biotrans_stereo.csv"
+python3 "${APP_ROOT}/Scripts/prepare_biotransformer_runtime.py" run \
+  --bt-type allHuman \
+  --cmode 3 \
+  --nstep 1 \
+  --smiles "${ESCITALOPRAM_SMILES}" \
+  --output "${TMP_TEST}/smoke_biotrans_stereo.csv" > "${TMP_TEST}/smoke_biotrans_stereo.log" 2>&1
+STEREO_ROWS="$(tail -n +2 "${TMP_TEST}/smoke_biotrans_stereo.csv" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')"
+if [ "${STEREO_ROWS}" -le 0 ]; then
+  echo "BioTransformer stereo retry failed for Escitalopram:" >&2
+  tail -n 80 "${TMP_TEST}/smoke_biotrans_stereo.log" >&2
+  exit 1
+fi
+if ! grep -Eq "retrying without stereo|after stereo strip|predicted [1-9]" "${TMP_TEST}/smoke_biotrans_stereo.log"; then
+  echo "WARNING: stereo retry message missing, but metabolites were produced (${STEREO_ROWS})" >&2
+fi
+echo "OK: BioTransformer stereo path produced ${STEREO_ROWS} metabolite row(s)"
+
+echo "==> GLORYx offline local backend predicts metabolites"
+python3 "${APP_ROOT}/Scripts/gloryx_api.py" \
+  --backend local \
+  --phase phase_1_and_2 \
+  --smile "${SMILES}" \
+  --output "${TMP_TEST}/smoke_gloryx.csv" > "${TMP_TEST}/smoke_gloryx.log" 2>&1
+test -s "${TMP_TEST}/smoke_gloryx.csv"
+GLORYX_ROWS="$(tail -n +2 "${TMP_TEST}/smoke_gloryx.csv" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')"
+if [ "${GLORYX_ROWS}" -le 0 ]; then
+  echo "Offline GLORYx predicted zero metabolites:" >&2
+  tail -n 80 "${TMP_TEST}/smoke_gloryx.log" >&2
+  exit 1
+fi
+echo "OK: GLORYx local produced ${GLORYX_ROWS} metabolite row(s) in ${TMP_TEST}/smoke_gloryx.csv"
+
+echo "==> MetaTrans image can execute"
+singularity run --no-mount cwd,home,tmp --containall -B "${TMP_TEST}:/tmp" --writable-tmpfs \
+  library://abourdais/default/metatrans \
+  -n smoke \
+  -s "${SMILES}" \
+  -r /tmp/smoke_metatrans.csv \
+  -l /tmp/smoke_metatrans.log
+test -s "${TMP_TEST}/smoke_metatrans.csv"
+echo "OK: MetaTrans produced ${TMP_TEST}/smoke_metatrans.csv"
+
+rm -rf "${TMP_TEST}"
+echo "All nested Singularity smoke tests passed."
