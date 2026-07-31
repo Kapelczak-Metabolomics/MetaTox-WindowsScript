@@ -39,6 +39,20 @@ PREFER_NATIVE_JAVA = os.environ.get("BIOTRANSFORMER_PREFER_NATIVE_JAVA", "1") no
     "False",
     "no",
 }
+# Upstream `-b superbio` runs a fixed multi-iteration pipeline that combinatorially
+# explodes on many drug-like molecules (and spams a non-fatal HGut NPE). MetaTox
+# emulates ordered "super human" metabolism with a bounded -q sequence instead.
+SUPERBIO_SEQUENCE = os.environ.get(
+    "BIOTRANSFORMER_SUPERBIO_SEQUENCE",
+    "ecbased:1;cyp450:1;phaseII:1;hgut:1",
+)
+# Match common upstream BioTransformer HGut null-score stack traces.
+_HGUT_NPE_LINE = re.compile(
+    r"(NullPointerException: Cannot invoke \"java\.lang\.Double\.doubleValue\(\)\" because \"score\" is null)"
+    r"|(Cannot invoke \"java\.util\.ArrayList\.size\(\)\" because \"biotransformations\" is null)"
+    r"|(^\tat biotransformer\.)"
+    r"|(^\tat executable\.BiotransformerExecutable3\.main)"
+)
 
 
 def find_singularity() -> str:
@@ -207,18 +221,81 @@ def prepare_runtime(runtime: Path) -> Path:
     return runtime
 
 
+def resolve_prediction_mode(bt_type: str, nstep: int) -> tuple[str, list[str], str]:
+    """Return (effective_type, extra_cli_args, human note)."""
+    normalized = bt_type.strip()
+    if normalized.lower() == "superbio":
+        sequence = SUPERBIO_SEQUENCE.strip()
+        note = (
+            "BioTransformer upstream '-b superbio' combinatorially expands across many "
+            f"iterations and often stalls on drug-like molecules; using bounded sequence "
+            f"-q '{sequence}' instead."
+        )
+        return "superbio", ["-q", sequence], note
+    return normalized, ["-b", normalized, "-s", str(nstep)], ""
+
+
+def _prediction_command_args(
+    *,
+    bt_type: str,
+    cmode: int,
+    nstep: int,
+    smiles: str,
+    output_csv_arg: str,
+) -> tuple[list[str], str]:
+    _effective, mode_args, note = resolve_prediction_mode(bt_type, nstep)
+    args = [
+        "-k",
+        "pred",
+        "-cm",
+        str(cmode),
+        *mode_args,
+        "-ismi",
+        smiles,
+        "-ocsv",
+        output_csv_arg,
+    ]
+    return args, note
+
+
+def _filter_biotransformer_output(stream, destination) -> None:
+    """Copy BioTransformer logs while suppressing known non-fatal HGut NPE spam."""
+    suppressed = 0
+    try:
+        for raw in stream:
+            line = raw.decode("utf-8", errors="replace") if isinstance(raw, (bytes, bytearray)) else raw
+            if _HGUT_NPE_LINE.search(line):
+                suppressed += 1
+                continue
+            destination.write(line)
+            destination.flush()
+    finally:
+        if suppressed:
+            print(
+                f"NOTE: suppressed {suppressed} non-fatal upstream HGut NullPointerException log line(s).",
+                file=destination,
+                flush=True,
+            )
+
+
 def _java_command(
     *,
     jar: Path,
-    runtime: Path,
     bt_type: str,
     cmode: int,
     nstep: int,
     smiles: str,
     output: Path,
     tmp_dir: Path,
-) -> list[str]:
-    return [
+) -> tuple[list[str], str]:
+    pred_args, note = _prediction_command_args(
+        bt_type=bt_type,
+        cmode=cmode,
+        nstep=nstep,
+        smiles=smiles,
+        output_csv_arg=str(output),
+    )
+    cmd = [
         "java",
         f"-Djava.io.tmpdir={tmp_dir}",
         f"-Djna.tmpdir={tmp_dir}",
@@ -226,19 +303,9 @@ def _java_command(
         "-Xmx6g",
         "-jar",
         str(jar),
-        "-b",
-        bt_type,
-        "-k",
-        "pred",
-        "-cm",
-        str(cmode),
-        "-s",
-        str(nstep),
-        "-ismi",
-        smiles,
-        "-ocsv",
-        str(output),
+        *pred_args,
     ]
+    return cmd, note
 
 
 def _singularity_command(
@@ -250,9 +317,16 @@ def _singularity_command(
     nstep: int,
     smiles: str,
     output: Path,
-) -> list[str]:
+) -> tuple[list[str], str]:
     singularity = find_singularity()
-    return [
+    pred_args, note = _prediction_command_args(
+        bt_type=bt_type,
+        cmode=cmode,
+        nstep=nstep,
+        smiles=smiles,
+        output_csv_arg=f"/bt-out/{output.name}",
+    )
+    cmd = [
         singularity,
         "exec",
         "--no-mount",
@@ -278,19 +352,9 @@ def _singularity_command(
         "-Djna.tmpdir=/tmp",
         "-jar",
         f"/bt/{jar_name}",
-        "-b",
-        bt_type,
-        "-k",
-        "pred",
-        "-cm",
-        str(cmode),
-        "-s",
-        str(nstep),
-        "-ismi",
-        smiles,
-        "-ocsv",
-        f"/bt-out/{output.name}",
+        *pred_args,
     ]
+    return cmd, note
 
 
 def _run_once(
@@ -303,6 +367,8 @@ def _run_once(
     runtime: Path,
     use_native: bool,
 ) -> int:
+    from threading import Thread
+
     jar = next(runtime.glob("*.jar"))
     output = output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -312,9 +378,8 @@ def _run_once(
     if use_native:
         tmp_dir = output.parent / ".bt-java-tmp"
         tmp_dir.mkdir(parents=True, exist_ok=True)
-        cmd = _java_command(
+        cmd, note = _java_command(
             jar=jar,
-            runtime=runtime,
             bt_type=bt_type,
             cmode=cmode,
             nstep=nstep,
@@ -322,10 +387,9 @@ def _run_once(
             output=output,
             tmp_dir=tmp_dir,
         )
-        print(f"Running native BioTransformer (cwd={runtime}):", " ".join(cmd), file=sys.stderr)
-        completed = subprocess.run(cmd, cwd=str(runtime), check=False)
+        cwd: str | None = str(runtime)
     else:
-        cmd = _singularity_command(
+        cmd, note = _singularity_command(
             jar_name=jar.name,
             runtime=runtime,
             bt_type=bt_type,
@@ -334,11 +398,25 @@ def _run_once(
             smiles=smiles,
             output=output,
         )
-        print("Running:", " ".join(cmd), file=sys.stderr)
-        completed = subprocess.run(cmd, check=False)
+        cwd = None
 
-    if completed.returncode != 0:
-        return completed.returncode
+    if note:
+        print(note, file=sys.stderr, flush=True)
+    print(("Running native BioTransformer:" if use_native else "Running:"), " ".join(cmd), file=sys.stderr, flush=True)
+
+    completed = subprocess.Popen(
+        cmd,
+        cwd=cwd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    assert completed.stdout is not None
+    pump = Thread(target=_filter_biotransformer_output, args=(completed.stdout, sys.stderr), daemon=True)
+    pump.start()
+    returncode = completed.wait()
+    pump.join(timeout=5)
+    if returncode != 0:
+        return returncode
 
     if not output.is_file() or output.stat().st_size == 0:
         output.write_text("SMILES\n", encoding="utf-8")

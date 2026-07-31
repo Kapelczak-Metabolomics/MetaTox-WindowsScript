@@ -30,7 +30,7 @@ BIOTRANS_OPTIONS = {
     "cyp450": "CYP450 metabolism",
     "phaseII": "Phase II conjugation",
     "hgut": "Human gut microbial",
-    "superbio": "Superbio ordered steps",
+    "superbio": "Superbio ordered steps (bounded sequence)",
     "envimicro": "Environmental microbial",
 }
 

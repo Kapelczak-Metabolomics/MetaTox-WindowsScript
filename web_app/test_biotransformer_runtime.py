@@ -32,6 +32,18 @@ def test_strip_smiles_stereochemistry():
     assert helper.has_stereochemistry("CCO") is False
 
 
+def test_superbio_uses_bounded_sequence():
+    effective, args, note = helper.resolve_prediction_mode("superbio", 1)
+    assert effective == "superbio"
+    assert args[:2] == ["-q", helper.SUPERBIO_SEQUENCE]
+    assert "-b" not in args
+    assert "bounded sequence" in note.lower() or "combinatorially" in note.lower()
+
+    _effective, allhuman_args, allhuman_note = helper.resolve_prediction_mode("allHuman", 2)
+    assert allhuman_args[:4] == ["-b", "allHuman", "-s", "2"]
+    assert allhuman_note == ""
+
+
 def test_run_prediction_retries_without_stereo(tmp_path: Path):
     runtime = tmp_path / "bt"
     runtime.mkdir()

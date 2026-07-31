@@ -330,6 +330,19 @@ Also ensure Docker Desktop has **8 GB+ RAM**.
 4. For Escitalopram, the log should mention `retrying without stereo` and then
    `BioTransformer predicted N metabolite row(s)` with N > 0.
 
+### BioTransformer `superbio` looks stuck / spams NullPointerException
+
+Upstream `-b superbio` runs many ordered iterations and combinatorially explodes on
+drug-like molecules (Escitalopram grew to 241 substrates by step 3 and kept going).
+It also logs a non-fatal HGut `NullPointerException` while continuing.
+
+MetaTox maps **superbio** to a bounded sequence instead:
+
+`-q ecbased:1;cyp450:1;phaseII:1;hgut:1`
+
+Override with `BIOTRANSFORMER_SUPERBIO_SEQUENCE` if needed. Prefer `allHuman` when you
+want breadth-first metabolites with an explicit step count.
+
 ### GLORYx
 
 **Default backend is offline/local** (`METATOX_GLORYX_BACKEND=local`). MetaTox applies
