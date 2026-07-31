@@ -10,7 +10,8 @@
 - **MetaTrans**
 - **Meta-Predictor**
 
-**BioTransformer3**, **Sygma**, **MetaTrans** and **GloryX (API)** are used via **singularity**. \
+**BioTransformer3**, **Sygma** and **MetaTrans** are used via **singularity** (BioTransformer prefers native Java in Docker). \
+**GLORYx** runs offline by default (published reaction rules + RDKit); the NERDD API is optional. \
 **Meta-Predictor** needs to clone its github and to create a **conda** environment. \
 Singularity image downloads and conda environment creations are automated (First use may take a long time).
 
